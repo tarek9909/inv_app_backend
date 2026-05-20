@@ -85,14 +85,8 @@ const hasFullyConfirmedReceipt = (request) => {
 };
 
 const createStockRequest = async (payload, req) => sequelize.transaction(async (transaction) => {
-  const driver = await Driver.findByPk(payload.driver_id, {
-    include: [{ model: DriverUserLink, as: 'user_link', include: [{ model: User, as: 'user', include: [{ model: Role, as: 'role' }] }] }],
-    transaction
-  });
+  const driver = await Driver.findByPk(payload.driver_id, { transaction });
   if (!driver || driver.status !== 'active') throw new HttpError(400, 'Driver is not active');
-  if (!driver.user_link?.user || driver.user_link.user.status !== 'active' || driver.user_link.user.role?.code !== 'driver') {
-    throw new HttpError(400, 'Driver must be linked to an active user with the driver role');
-  }
 
   const subtotal = payload.items.reduce((sum, item) => sum + Number(item.quantity) * Number(item.unit_price), 0);
   const total = subtotal - Number(payload.discount_amount || 0);
