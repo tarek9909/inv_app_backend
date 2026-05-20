@@ -23,10 +23,10 @@ exports.listStockRequests = asyncHandler(async (req, res) => {
       driver_id: driver.id,
       request_status: { [Op.in]: ['approved', 'completed'] }
     },
-    include: stockRequestService.includeStockRequest,
-    order: [['created_at', 'DESC']]
+    include: stockRequestService.includeStockRequestList,
+    order: [['created_at', 'DESC']],
+    limit: 50
   });
-  rows.forEach(stockRequestService.withReceiptStatus);
   ok(res, 'Driver stock requests loaded', rows, { total: rows.length });
 });
 

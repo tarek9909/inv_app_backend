@@ -1,15 +1,17 @@
 const { Op } = require('sequelize');
-const { Notification, User, Role, Permission, RolePermission } = require('../models');
+const { sequelize, Notification, User, Role, Permission, RolePermission } = require('../models');
 
+// Optimized: single query with JOINs instead of 3-4 sequential queries
 const usersWithPermission = async (permissionKey, transaction) => {
-  const permission = await Permission.findOne({ where: { permission_key: permissionKey }, transaction });
-  const roleIds = permission
-    ? (await RolePermission.findAll({ where: { permission_id: permission.id }, transaction })).map((row) => row.role_id)
-    : [];
-  const roles = await Role.findAll({ where: { [Op.or]: [{ code: 'admin' }, ...(roleIds.length ? [{ id: { [Op.in]: roleIds } }] : [])] }, transaction });
-  const ids = roles.map((role) => role.id);
-  if (!ids.length) return [];
-  return User.findAll({ where: { role_id: { [Op.in]: ids }, status: 'active' }, transaction });
+  const [users] = await sequelize.query(
+    `SELECT DISTINCT u.id, u.full_name, u.email FROM users u
+     JOIN roles r ON u.role_id = r.id
+     LEFT JOIN role_permissions rp ON r.id = rp.role_id
+     LEFT JOIN permissions p ON rp.permission_id = p.id
+     WHERE u.status = 'active' AND (r.code = 'admin' OR p.permission_key = :permissionKey)`,
+    { replacements: { permissionKey }, transaction, type: sequelize.QueryTypes.SELECT }
+  );
+  return users || [];
 };
 
 const createForUsers = async ({ users, type, title, message, entityType, entityId, transaction }) => {
