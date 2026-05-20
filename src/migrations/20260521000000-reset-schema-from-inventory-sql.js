@@ -103,6 +103,120 @@ const shouldRunStatement = (statement) => {
     && normalized !== 'ROLLBACK';
 };
 
+const splitCommaClauses = (value) => {
+  const clauses = [];
+  let current = '';
+  let quote = null;
+  let depth = 0;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    const next = value[index + 1];
+    const previous = value[index - 1];
+
+    if (quote) {
+      current += char;
+      if (char === quote) {
+        if (quote === '`' && next === '`') {
+          current += next;
+          index += 1;
+        } else if ((quote === '\'' || quote === '"') && next === quote) {
+          current += next;
+          index += 1;
+        } else if (previous !== '\\') {
+          quote = null;
+        }
+      }
+      continue;
+    }
+
+    if (char === '\'' || char === '"' || char === '`') {
+      quote = char;
+      current += char;
+      continue;
+    }
+
+    if (char === '(') depth += 1;
+    if (char === ')' && depth > 0) depth -= 1;
+
+    if (char === ',' && depth === 0) {
+      const clause = current.trim();
+      if (clause) clauses.push(clause);
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  const finalClause = current.trim();
+  if (finalClause) clauses.push(finalClause);
+  return clauses;
+};
+
+const collectPrimaryKeyClauses = (statements) => {
+  const primaryKeys = new Map();
+
+  statements.forEach((statement) => {
+    const match = statement.match(/^ALTER\s+TABLE\s+`([^`]+)`\s+([\s\S]+)$/i);
+    if (!match) return;
+
+    const [, tableName, alterBody] = match;
+    const primaryKeyClause = splitCommaClauses(alterBody)
+      .find((clause) => /^\s*ADD\s+PRIMARY\s+KEY\b/i.test(clause));
+
+    if (primaryKeyClause) {
+      primaryKeys.set(tableName, primaryKeyClause.replace(/^\s*ADD\s+/i, '').trim());
+    }
+  });
+
+  return primaryKeys;
+};
+
+const addPrimaryKeyToCreateStatement = (statement, primaryKeyClause) => {
+  if (!primaryKeyClause || /\bPRIMARY\s+KEY\b/i.test(statement)) return statement;
+
+  const engineMatch = statement.match(/\r?\n\)\s*ENGINE=/i);
+  if (engineMatch?.index == null) {
+    const closeIndex = statement.lastIndexOf(')');
+    if (closeIndex === -1) return statement;
+    return `${statement.slice(0, closeIndex)},\n  ${primaryKeyClause}\n${statement.slice(closeIndex)}`;
+  }
+
+  return `${statement.slice(0, engineMatch.index)},\n  ${primaryKeyClause}${statement.slice(engineMatch.index)}`;
+};
+
+const removePrimaryKeyFromAlterStatement = (statement) => {
+  const match = statement.match(/^ALTER\s+TABLE\s+`([^`]+)`\s+([\s\S]+)$/i);
+  if (!match) return statement;
+
+  const [, tableName, alterBody] = match;
+  const clauses = splitCommaClauses(alterBody)
+    .filter((clause) => !/^\s*ADD\s+PRIMARY\s+KEY\b/i.test(clause));
+
+  if (!clauses.length) return null;
+  return `ALTER TABLE \`${tableName}\`\n  ${clauses.join(',\n  ')}`;
+};
+
+const makePrimaryKeySafeDumpStatements = (statements) => {
+  const primaryKeys = collectPrimaryKeyClauses(statements);
+
+  return statements
+    .map((statement) => {
+      const createMatch = statement.match(/^CREATE\s+TABLE\s+`([^`]+)`/i);
+      if (createMatch) {
+        return addPrimaryKeyToCreateStatement(statement, primaryKeys.get(createMatch[1]));
+      }
+
+      if (/^ALTER\s+TABLE\s+`[^`]+`\s+[\s\S]*ADD\s+PRIMARY\s+KEY\b/i.test(statement)) {
+        return removePrimaryKeyFromAlterStatement(statement);
+      }
+
+      return statement;
+    })
+    .filter(Boolean);
+};
+
 const dropExistingTables = async (queryInterface) => {
   const sequelize = queryInterface.sequelize;
   const [databaseRows] = await sequelize.query('SELECT DATABASE() AS database_name');
@@ -146,7 +260,7 @@ const importInventorySql = async (queryInterface) => {
   }
 
   const sql = fs.readFileSync(inventorySqlPath, 'utf8');
-  const statements = splitSqlStatements(sql).filter(shouldRunStatement);
+  const statements = makePrimaryKeySafeDumpStatements(splitSqlStatements(sql).filter(shouldRunStatement));
 
   await queryInterface.sequelize.query('SET FOREIGN_KEY_CHECKS = 0');
   try {
@@ -190,7 +304,9 @@ module.exports = {
 
   // Exported for focused tests and future maintenance.
   _private: {
+    makePrimaryKeySafeDumpStatements,
     normalizeTableName,
+    splitCommaClauses,
     splitSqlStatements,
     shouldRunStatement
   }
