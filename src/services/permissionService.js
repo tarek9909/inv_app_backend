@@ -1,4 +1,4 @@
-const { Permission, Role, RolePermission } = require('../models');
+const { Permission, RolePermission } = require('../models');
 const { allPermissionKeys } = require('../config/permissions');
 
 const getPermissionKeysForRole = async (role) => {
@@ -14,9 +14,13 @@ const getPermissionKeysForRole = async (role) => {
 
 const attachPermissions = async (user) => {
   if (!user) return user;
-  const role = user.role || await Role.findByPk(user.role_id);
+  const role = user.role || user.getDataValue?.('role') || null;
   const permissions = await getPermissionKeysForRole(role);
-  user.setDataValue('permissions', permissions);
+  if (typeof user.setDataValue === 'function') {
+    user.setDataValue('permissions', permissions);
+  } else {
+    user.permissions = permissions;
+  }
   return user;
 };
 

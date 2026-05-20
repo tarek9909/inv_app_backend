@@ -1,14 +1,14 @@
 const { Op } = require('sequelize');
-const { Driver, DriverUserLink, StockRequest } = require('../models');
+const { Driver, StockRequest } = require('../models');
 const stockRequestService = require('../services/stockRequestService');
 const asyncHandler = require('../utils/asyncHandler');
 const { ok } = require('../utils/responses');
 const HttpError = require('../utils/httpError');
 
 const loadDriverForUser = async (userId) => {
-  const link = await DriverUserLink.findOne({ where: { user_id: userId }, include: [{ model: Driver, as: 'driver' }] });
-  if (!link?.driver) throw new HttpError(403, 'No driver profile is linked to this account');
-  return link.driver;
+  const driver = await Driver.findOne({ where: { user_id: userId } });
+  if (!driver) throw new HttpError(403, 'No driver profile is linked to this account');
+  return driver;
 };
 
 exports.me = asyncHandler(async (req, res) => {

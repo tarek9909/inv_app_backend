@@ -1,12 +1,13 @@
-const { sequelize, StockRequest, StockRequestItem, StockRequestItemConfirmation, StockReservation, Driver, DriverUserLink, User, Role, Item, Payment, StockRequestPrint, Setting } = require('../models');
+const { sequelize, StockRequest, StockRequestItem, StockRequestItemConfirmation, StockReservation, Driver, User, Item, Payment, StockRequestPrint, Setting } = require('../models');
 const HttpError = require('../utils/httpError');
 const { generateNumber, toMoney } = require('../utils/numbers');
 const { changeStock, toEffectiveBaseQuantity, getAvailableStock } = require('./stockService');
 const { logAction } = require('./auditService');
 const notificationService = require('./notificationService');
+const { withRoleInclude, normalizeUserRole } = require('./userService');
 
 const includeStockRequest = [
-  { model: Driver, as: 'driver', include: [{ model: DriverUserLink, as: 'user_link', include: [{ model: User, as: 'user', include: [{ model: Role, as: 'role' }] }] }] },
+  { model: Driver, as: 'driver', include: [{ model: User, as: 'user', include: withRoleInclude() }] },
   { model: StockRequestItem, as: 'items', include: [{ model: Item, as: 'item' }, { model: StockRequestItemConfirmation, as: 'confirmation' }] },
   { model: StockRequestPrint, as: 'prints', include: [{ model: User, as: 'printer' }] }
 ];
@@ -34,6 +35,7 @@ const receiptStatusFor = (request) => {
 
 const withReceiptStatus = (request) => {
   if (!request) return request;
+  if (request.driver?.user) normalizeUserRole(request.driver.user);
   request.setDataValue('driver_receipt_status', receiptStatusFor(request));
   return request;
 };

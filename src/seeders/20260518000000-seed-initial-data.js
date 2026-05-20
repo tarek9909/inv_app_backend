@@ -19,9 +19,17 @@ module.exports = {
     ], { ignoreDuplicates: true });
 
     await queryInterface.bulkInsert('users', [
-      { id: 1, role_id: 1, full_name: 'System Admin', email: 'admin@example.com', password, status: 'active', created_at: now, updated_at: now },
-      { id: 2, role_id: 2, full_name: 'Inventory User', email: 'inventory@example.com', password, status: 'active', created_at: now, updated_at: now },
-      { id: 3, role_id: 3, full_name: 'Accountant User', email: 'accountant@example.com', password, status: 'active', created_at: now, updated_at: now }
+      { id: 1, full_name: 'System Admin', email: 'admin@example.com', password, status: 'active', created_at: now, updated_at: now },
+      { id: 2, full_name: 'Inventory User', email: 'inventory@example.com', password, status: 'active', created_at: now, updated_at: now },
+      { id: 3, full_name: 'Accountant User', email: 'accountant@example.com', password, status: 'active', created_at: now, updated_at: now },
+      { id: 4, full_name: 'Ahmad Driver', email: 'driver@example.com', phone: '03000000', password, status: 'active', created_at: now, updated_at: now }
+    ], { ignoreDuplicates: true });
+
+    await queryInterface.bulkInsert('user_roles', [
+      { id: 1, user_id: 1, role_id: 1, created_at: now },
+      { id: 2, user_id: 2, role_id: 2, created_at: now },
+      { id: 3, user_id: 3, role_id: 3, created_at: now },
+      { id: 4, user_id: 4, role_id: 4, created_at: now }
     ], { ignoreDuplicates: true });
 
     await queryInterface.bulkInsert('item_categories', [
@@ -40,7 +48,7 @@ module.exports = {
     ], { ignoreDuplicates: true });
 
     await queryInterface.bulkInsert('drivers', [
-      { id: 1, full_name: 'Ahmad Driver', phone: '03000000', address: 'Lebanon', id_number: 'ID-001', vehicle_type: 'Motorcycle', vehicle_plate_number: 'PLATE-001', status: 'active', created_by: 3, created_at: now, updated_at: now }
+      { id: 1, user_id: 4, full_name: 'Ahmad Driver', phone: '03000000', address: 'Lebanon', id_number: 'ID-001', vehicle_type: 'Motorcycle', vehicle_plate_number: 'PLATE-001', status: 'active', created_by: 3, created_at: now, updated_at: now }
     ], { ignoreDuplicates: true });
   },
 
@@ -49,7 +57,8 @@ module.exports = {
     await queryInterface.bulkDelete('items', { id: [1, 2] });
     await queryInterface.bulkDelete('suppliers', { id: [1] });
     await queryInterface.bulkDelete('item_categories', { id: [1, 2, 3] });
-    await queryInterface.bulkDelete('users', { id: [1, 2, 3] });
-    await queryInterface.bulkDelete('roles', { id: [1, 2, 3] });
+    await queryInterface.bulkDelete('user_roles', { user_id: [1, 2, 3, 4] });
+    await queryInterface.bulkDelete('users', { id: [1, 2, 3, 4] });
+    await queryInterface.bulkDelete('roles', { id: [1, 2, 3, 4] });
   }
 };

@@ -2,8 +2,9 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const config = require('../config/env');
 const { Op } = require('sequelize');
-const { User, Role, LoginEvent } = require('../models');
+const { User, LoginEvent } = require('../models');
 const { attachPermissions } = require('./permissionService');
+const { findUserWithRole, loadUserWithRole } = require('./userService');
 const HttpError = require('../utils/httpError');
 
 const eventMeta = (req) => ({ ip_address: req?.ip, user_agent: req?.headers?.['user-agent'] });
@@ -11,9 +12,9 @@ const eventMeta = (req) => ({ ip_address: req?.ip, user_agent: req?.headers?.['u
 const recordLoginEvent = (values) => LoginEvent?.create ? LoginEvent.create(values).catch(() => {}) : Promise.resolve();
 
 const login = async ({ email, password }, req) => {
-  const user = await User.unscoped().findOne({ where: { email }, include: [{ model: Role, as: 'role' }] });
+  const user = await findUserWithRole({ email }, { withPassword: true });
 
-  if (!user || user.status !== 'active') {
+  if (!user || user.status !== 'active' || !user.role) {
     await recordLoginEvent({ email, event_type: 'failed', ...eventMeta(req) });
     throw new HttpError(401, 'Invalid credentials');
   }
@@ -27,12 +28,12 @@ const login = async ({ email, password }, req) => {
   await user.update({ last_login_at: new Date() });
   await recordLoginEvent({ user_id: user.id, email, event_type: 'success', ...eventMeta(req) });
   const token = jwt.sign({ id: user.id, role: user.role.code }, config.jwt.secret, { expiresIn: config.jwt.expiresIn });
-  const safeUser = await attachPermissions(await User.findByPk(user.id, { include: [{ model: Role, as: 'role' }] }));
+  const safeUser = await attachPermissions(await loadUserWithRole(user.id, { includeDriver: true }));
 
   return { token, user: safeUser };
 };
 
-const loadSafeUser = async (id) => attachPermissions(await User.findByPk(id, { include: [{ model: Role, as: 'role' }] }));
+const loadSafeUser = async (id) => attachPermissions(await loadUserWithRole(id, { includeDriver: true }));
 
 const updateProfile = async (userId, payload) => {
   const user = await User.unscoped().findByPk(userId);

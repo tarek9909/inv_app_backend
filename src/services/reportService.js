@@ -1,8 +1,9 @@
 const { Op, fn, col, literal } = require('sequelize');
-const { sequelize, Item, Driver, Location, LocationCommissionRule, LocationMonthlyTarget, DriverLocationAssignment, DriverUserLink, User, Role, StockRequest, StockRequestItem, StockRequestItemConfirmation, Payment, PurchaseOrder, StockMovement, Setting } = require('../models');
+const { sequelize, Item, Driver, Location, LocationCommissionRule, LocationMonthlyTarget, DriverLocationAssignment, User, StockRequest, StockRequestItem, StockRequestItemConfirmation, Payment, PurchaseOrder, StockMovement, Setting } = require('../models');
 const HttpError = require('../utils/httpError');
 const { attachAvailability } = require('./stockService');
 const { dashboardCache, settingsCache, reportCache } = require('../utils/cache');
+const { withRoleInclude, normalizeUserRole } = require('./userService');
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 const toNumber = (value) => Number(value || 0);
@@ -409,7 +410,7 @@ const buildDriverReportRow = ({ driver, requests, payments, payrollRow, kpiRows,
   const totalCommission = commissionRows.reduce((s, r) => s + toNumber(r.total_commission), 0);
   const salary = toNumber(driver.monthly_salary);
   const report = {
-    driver: { id: driver.id, full_name: driver.full_name, phone: driver.phone, monthly_salary: salary, status: driver.status, current_location: driver.current_location || null },
+    driver: { id: driver.id, full_name: driver.full_name, phone: driver.phone, monthly_salary: salary, status: driver.status, current_location: driver.current_location || null, user: driver.user || null },
     summary: { request_count: requests.length, completed_count: completedRequests.length, stock_out_total: stockOutTotal, return_total: returnTotal, net_sales: stockOutTotal - returnTotal, paid_in_period: paidInPeriod, remaining_open: remainingOpen, missing_payments: requests.filter((r) => r.request_type === 'stock_out' && r.request_status === 'completed' && ['pending', 'partially_paid'].includes(r.payment_status)).reduce((s, r) => s + toNumber(r.remaining_amount), 0) },
     kpi: { target_amount: targetAmount, sales_total: kpiSales, progress_percent: progressPercent, variance_amount: kpiSales - targetAmount, target_reached: targetAmount > 0 ? kpiSales >= targetAmount : kpiSales > 0, performance: performanceLabel({ targetAmount, salesTotal: kpiSales, progressPercent }), rows: kpiRows },
     commission: { base_commission: commissionRows.reduce((s, r) => s + toNumber(r.base_commission), 0), bonus_commission: commissionRows.reduce((s, r) => s + toNumber(r.bonus_commission), 0), total_commission: totalCommission, rows: commissionRows },
@@ -429,10 +430,11 @@ const driverDetailData = async ({ month, driverId, includeDetail = false }) => {
   const driverWhere = driverId ? { id: driverId } : {};
   const drivers = await Driver.findAll({
     where: driverWhere,
-    include: [{ model: Location, as: 'current_location', attributes: ['id', 'name'] }, { model: DriverUserLink, as: 'user_link', include: [{ model: User, as: 'user', attributes: ['id', 'full_name', 'email', 'status'], include: [{ model: Role, as: 'role', attributes: ['id', 'name', 'code'] }] }] }],
+    include: [{ model: Location, as: 'current_location', attributes: ['id', 'name'] }, { model: User, as: 'user', attributes: ['id', 'full_name', 'email', 'status'], include: withRoleInclude() }],
     attributes: ['id', 'full_name', 'phone', 'monthly_salary', 'status', 'current_location_id'],
     order: [['full_name', 'ASC']]
   });
+  drivers.forEach((driver) => { if (driver.user) normalizeUserRole(driver.user); });
   if (driverId && !drivers.length) throw new HttpError(404, 'Driver not found');
   const driverIds = drivers.map((d) => d.id);
   if (!driverIds.length) return { period: bounds.value, rows: [] };

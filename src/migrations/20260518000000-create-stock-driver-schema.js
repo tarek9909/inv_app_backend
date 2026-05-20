@@ -11,7 +11,6 @@ const statements = [
   )`,
   `CREATE TABLE IF NOT EXISTS users (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    role_id BIGINT UNSIGNED NOT NULL,
     full_name VARCHAR(150) NOT NULL,
     email VARCHAR(150) NOT NULL UNIQUE,
     phone VARCHAR(50) NULL,
@@ -19,8 +18,16 @@ const statements = [
     status ENUM('active', 'inactive', 'blocked') DEFAULT 'active',
     last_login_at DATETIME NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NULL,
-    CONSTRAINT fk_users_role FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE RESTRICT ON UPDATE CASCADE
+    updated_at DATETIME NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS user_roles (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL UNIQUE,
+    role_id BIGINT UNSIGNED NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user_roles_role (role_id),
+    CONSTRAINT fk_user_roles_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_user_roles_role FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE RESTRICT ON UPDATE CASCADE
   )`,
   `CREATE TABLE IF NOT EXISTS suppliers (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -128,6 +135,7 @@ const statements = [
   )`,
   `CREATE TABLE IF NOT EXISTS drivers (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NULL UNIQUE,
     full_name VARCHAR(150) NOT NULL,
     phone VARCHAR(50) NULL,
     address TEXT NULL,
@@ -140,6 +148,7 @@ const statements = [
     updated_by BIGINT UNSIGNED NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NULL,
+    CONSTRAINT fk_drivers_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT fk_drivers_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT fk_drivers_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE
   )`,
@@ -236,6 +245,7 @@ module.exports = {
       'item_categories',
       'suppliers',
       'drivers',
+      'user_roles',
       'users',
       'roles'
     ]) {

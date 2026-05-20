@@ -16,7 +16,6 @@ const Role = sequelize.define('roles', {
 
 const User = sequelize.define('users', {
   id: { type: DataTypes.BIGINT.UNSIGNED, primaryKey: true, autoIncrement: true },
-  role_id: { type: DataTypes.BIGINT.UNSIGNED, allowNull: false },
   full_name: { type: DataTypes.STRING(150), allowNull: false },
   email: { type: DataTypes.STRING(150), allowNull: false, unique: true },
   phone: DataTypes.STRING(50),
@@ -47,6 +46,13 @@ const RolePermission = sequelize.define('role_permissions', {
   permission_id: { type: DataTypes.BIGINT.UNSIGNED, allowNull: false },
   created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
 }, { tableName: 'role_permissions', timestamps: false });
+
+const UserRole = sequelize.define('user_roles', {
+  id: { type: DataTypes.BIGINT.UNSIGNED, primaryKey: true, autoIncrement: true },
+  user_id: { type: DataTypes.BIGINT.UNSIGNED, allowNull: false },
+  role_id: { type: DataTypes.BIGINT.UNSIGNED, allowNull: false },
+  created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
+}, { tableName: 'user_roles', timestamps: false });
 
 const Setting = sequelize.define('settings', {
   id: { type: DataTypes.BIGINT.UNSIGNED, primaryKey: true, autoIncrement: true },
@@ -207,6 +213,7 @@ const PurchaseOrderItem = sequelize.define('purchase_order_items', {
 
 const Driver = sequelize.define('drivers', {
   id: { type: DataTypes.BIGINT.UNSIGNED, primaryKey: true, autoIncrement: true },
+  user_id: DataTypes.BIGINT.UNSIGNED,
   full_name: { type: DataTypes.STRING(150), allowNull: false },
   phone: DataTypes.STRING(50),
   address: DataTypes.TEXT,
@@ -267,13 +274,6 @@ const LocationMonthlyTarget = sequelize.define('location_monthly_targets', {
   created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
   updated_at: DataTypes.DATE
 }, { tableName: 'location_monthly_targets', timestamps: false });
-
-const DriverUserLink = sequelize.define('driver_user_links', {
-  id: { type: DataTypes.BIGINT.UNSIGNED, primaryKey: true, autoIncrement: true },
-  driver_id: { type: DataTypes.BIGINT.UNSIGNED, allowNull: false },
-  user_id: { type: DataTypes.BIGINT.UNSIGNED, allowNull: false },
-  created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
-}, { tableName: 'driver_user_links', timestamps: false });
 
 const StockRequest = sequelize.define('stock_requests', {
   id: { type: DataTypes.BIGINT.UNSIGNED, primaryKey: true, autoIncrement: true },
@@ -421,8 +421,10 @@ const AuditLog = sequelize.define('audit_logs', {
   created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
 }, { tableName: 'audit_logs', timestamps: false });
 
-Role.hasMany(User, { foreignKey: 'role_id', as: 'users' });
-User.belongsTo(Role, { foreignKey: 'role_id', as: 'role' });
+User.hasOne(UserRole, { foreignKey: 'user_id', as: 'user_role' });
+UserRole.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+Role.hasMany(UserRole, { foreignKey: 'role_id', as: 'user_roles' });
+UserRole.belongsTo(Role, { foreignKey: 'role_id', as: 'role' });
 Role.belongsToMany(Permission, { through: RolePermission, foreignKey: 'role_id', otherKey: 'permission_id', as: 'permissions' });
 Permission.belongsToMany(Role, { through: RolePermission, foreignKey: 'permission_id', otherKey: 'role_id', as: 'roles' });
 Role.hasMany(RolePermission, { foreignKey: 'role_id', as: 'role_permissions' });
@@ -467,6 +469,8 @@ InventoryBatch.belongsTo(PurchaseOrderItem, { foreignKey: 'purchase_order_item_i
 
 Driver.hasMany(StockRequest, { foreignKey: 'driver_id', as: 'stock_requests' });
 StockRequest.belongsTo(Driver, { foreignKey: 'driver_id', as: 'driver' });
+Driver.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+User.hasOne(Driver, { foreignKey: 'user_id', as: 'driver' });
 Driver.belongsTo(Location, { foreignKey: 'current_location_id', as: 'current_location' });
 Location.hasMany(Driver, { foreignKey: 'current_location_id', as: 'drivers' });
 Driver.hasMany(DriverLocationAssignment, { foreignKey: 'driver_id', as: 'location_history' });
@@ -479,10 +483,6 @@ LocationCommissionRule.belongsTo(User, { foreignKey: 'created_by', as: 'creator'
 Location.hasMany(LocationMonthlyTarget, { foreignKey: 'location_id', as: 'monthly_targets' });
 LocationMonthlyTarget.belongsTo(Location, { foreignKey: 'location_id', as: 'location' });
 LocationMonthlyTarget.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
-Driver.hasOne(DriverUserLink, { foreignKey: 'driver_id', as: 'user_link' });
-DriverUserLink.belongsTo(Driver, { foreignKey: 'driver_id', as: 'driver' });
-DriverUserLink.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
-User.hasOne(DriverUserLink, { foreignKey: 'user_id', as: 'driver_link' });
 StockRequest.hasMany(StockRequestItem, { foreignKey: 'stock_request_id', as: 'items' });
 StockRequestItem.belongsTo(StockRequest, { foreignKey: 'stock_request_id', as: 'stock_request' });
 StockRequest.hasMany(StockReservation, { foreignKey: 'stock_request_id', as: 'reservations' });
@@ -518,6 +518,7 @@ module.exports = {
   User,
   Permission,
   RolePermission,
+  UserRole,
   Setting,
   Supplier,
   ItemCategory,
@@ -534,7 +535,6 @@ module.exports = {
   DriverLocationAssignment,
   LocationCommissionRule,
   LocationMonthlyTarget,
-  DriverUserLink,
   StockRequest,
   StockRequestItem,
   StockRequestItemConfirmation,

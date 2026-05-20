@@ -59,17 +59,6 @@ module.exports = {
     `);
 
     await queryInterface.sequelize.query(`
-      CREATE TABLE IF NOT EXISTS driver_user_links (
-        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        driver_id BIGINT UNSIGNED NOT NULL UNIQUE,
-        user_id BIGINT UNSIGNED NOT NULL UNIQUE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT fk_driver_user_links_driver FOREIGN KEY (driver_id) REFERENCES drivers(id) ON DELETE CASCADE ON UPDATE CASCADE,
-        CONSTRAINT fk_driver_user_links_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
-      )
-    `);
-
-    await queryInterface.sequelize.query(`
       CREATE TABLE IF NOT EXISTS stock_request_prints (
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         stock_request_id BIGINT UNSIGNED NOT NULL,
@@ -124,7 +113,6 @@ module.exports = {
 
   async down(queryInterface) {
     if (await tableExists(queryInterface, 'stock_request_prints')) await queryInterface.dropTable('stock_request_prints');
-    if (await tableExists(queryInterface, 'driver_user_links')) await queryInterface.dropTable('driver_user_links');
     if (await tableExists(queryInterface, 'settings')) await queryInterface.dropTable('settings');
     if (await tableExists(queryInterface, 'role_permissions')) await queryInterface.dropTable('role_permissions');
     if (await tableExists(queryInterface, 'permissions')) await queryInterface.dropTable('permissions');

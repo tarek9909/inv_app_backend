@@ -1,28 +1,38 @@
 const { Op, literal } = require('sequelize');
-const { sequelize, Driver, Location, LocationCommissionRule, LocationMonthlyTarget, DriverLocationAssignment, DriverUserLink, StockRequest, Payment, User, Role } = require('../models');
+const { sequelize, Driver, Location, LocationCommissionRule, LocationMonthlyTarget, DriverLocationAssignment, StockRequest, Payment, User } = require('../models');
 const { list, findOrFail } = require('../services/crudService');
 const stockRequestService = require('../services/stockRequestService');
 const paymentService = require('../services/paymentService');
 const reportService = require('../services/reportService');
+const { loadUserWithRole, withRoleInclude, normalizeUserRole } = require('../services/userService');
 const { logAction } = require('../services/auditService');
 const asyncHandler = require('../utils/asyncHandler');
 const { ok, created } = require('../utils/responses');
 const HttpError = require('../utils/httpError');
 
 const includeDriver = [
-  { model: DriverUserLink, as: 'user_link', include: [{ model: User, as: 'user', include: [{ model: Role, as: 'role' }] }] },
+  { model: User, as: 'user', include: withRoleInclude() },
   { model: Location, as: 'current_location' }
 ];
 
 const assertDriverRoleUser = async (userId, transaction) => {
   if (!userId) return;
-  const user = await User.findByPk(userId, {
-    include: [{ model: Role, as: 'role' }],
-    transaction
-  });
+  const user = await loadUserWithRole(userId, { transaction });
   if (!user || user.status !== 'active' || user.role?.code !== 'driver') {
     throw new HttpError(400, 'Linked login account must be an active user with the driver role');
   }
+};
+
+const assertUserNotLinkedToOtherDriver = async (userId, driverId, transaction) => {
+  if (!userId) return;
+  const existing = await Driver.findOne({
+    where: {
+      user_id: userId,
+      ...(driverId ? { id: { [Op.ne]: driverId } } : {})
+    },
+    transaction
+  });
+  if (existing) throw new HttpError(409, 'This login account is already linked to another driver');
 };
 
 const setDriverLocation = async ({ driver, locationId, req, transaction }) => {
@@ -54,7 +64,8 @@ const setDriverLocation = async ({ driver, locationId, req, transaction }) => {
 };
 
 const attachDriverValues = (driver) => {
-  driver.setDataValue('user_id', driver.user_link?.user_id || null);
+  if (driver.user) normalizeUserRole(driver.user);
+  driver.setDataValue('user_id', driver.user_id || null);
   driver.setDataValue('location_id', driver.current_location_id || null);
   return driver;
 };
@@ -99,8 +110,8 @@ exports.createDriver = asyncHandler(async (req, res) => {
   const driver = await sequelize.transaction(async (transaction) => {
     const { user_id, location_id, ...payload } = req.body;
     await assertDriverRoleUser(user_id, transaction);
-    const createdDriver = await Driver.create({ ...payload, created_by: req.user.id }, { transaction });
-    if (user_id) await DriverUserLink.create({ driver_id: createdDriver.id, user_id }, { transaction });
+    await assertUserNotLinkedToOtherDriver(user_id, null, transaction);
+    const createdDriver = await Driver.create({ ...payload, user_id: user_id || null, created_by: req.user.id }, { transaction });
     await setDriverLocation({ driver: createdDriver, locationId: location_id, req, transaction });
     await logAction({ req, action: 'create', module: 'drivers', recordId: createdDriver.id, newData: req.body, transaction });
     return Driver.findByPk(createdDriver.id, { include: includeDriver, transaction });
@@ -113,10 +124,13 @@ exports.updateDriver = asyncHandler(async (req, res) => {
     const driver = await findOrFail(Driver, req.params.id, { name: 'Driver' });
     const { user_id, location_id, ...payload } = req.body;
     const oldData = driver.toJSON();
-    await assertDriverRoleUser(user_id, transaction);
-    await driver.update({ ...payload, updated_by: req.user.id }, { transaction });
-    await DriverUserLink.destroy({ where: { driver_id: driver.id }, transaction });
-    if (user_id) await DriverUserLink.create({ driver_id: driver.id, user_id }, { transaction });
+    const driverPayload = { ...payload, updated_by: req.user.id };
+    if (Object.prototype.hasOwnProperty.call(req.body, 'user_id')) {
+      await assertDriverRoleUser(user_id, transaction);
+      await assertUserNotLinkedToOtherDriver(user_id, driver.id, transaction);
+      driverPayload.user_id = user_id || null;
+    }
+    await driver.update(driverPayload, { transaction });
     if (Object.prototype.hasOwnProperty.call(req.body, 'location_id')) {
       await setDriverLocation({ driver, locationId: location_id, req, transaction });
     }

@@ -1,11 +1,12 @@
 const { Op } = require('sequelize');
-const { sequelize, Notification, User, Role, Permission, RolePermission } = require('../models');
+const { sequelize, Notification } = require('../models');
 
 // Optimized: single query with JOINs instead of 3-4 sequential queries
 const usersWithPermission = async (permissionKey, transaction) => {
-  const [users] = await sequelize.query(
+  const users = await sequelize.query(
     `SELECT DISTINCT u.id, u.full_name, u.email FROM users u
-     JOIN roles r ON u.role_id = r.id
+     JOIN user_roles ur ON ur.user_id = u.id
+     JOIN roles r ON ur.role_id = r.id
      LEFT JOIN role_permissions rp ON r.id = rp.role_id
      LEFT JOIN permissions p ON rp.permission_id = p.id
      WHERE u.status = 'active' AND (r.code = 'admin' OR p.permission_key = :permissionKey)`,

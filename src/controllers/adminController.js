@@ -1,8 +1,8 @@
 const { Op } = require('sequelize');
 const bcrypt = require('bcryptjs');
-const { Role, User, AuditLog, LoginEvent, Permission, RolePermission, DriverUserLink, Driver, sequelize } = require('../models');
+const { Role, User, AuditLog, LoginEvent, Permission, RolePermission, sequelize } = require('../models');
 const { list, findOrFail } = require('../services/crudService');
-const { createUser, updateUser, includeRole } = require('../services/userService');
+const { createUser, updateUser, withRoleInclude, normalizeUserRoles, loadUserWithRole } = require('../services/userService');
 const { syncUserIfDriver } = require('../services/driverSyncService');
 const { logAction } = require('../services/auditService');
 const { recordLoginEvent } = require('../services/authService');
@@ -17,12 +17,10 @@ exports.listUsers = asyncHandler(async (req, res) => {
   const roleCode = canViewTeam ? req.query.role_code : 'driver';
   const requestedStatus = canViewTeam ? req.query.status : 'active';
   const { role_code: ignoredRoleCode, status: ignoredStatus, ...query } = req.query;
-  const include = [{
-    ...includeRole[0],
-    ...(roleCode ? { where: { code: roleCode }, required: true } : {})
-  }, { model: DriverUserLink, as: 'driver_link', include: [{ model: Driver, as: 'driver' }] }];
+  const include = withRoleInclude({ roleWhere: roleCode ? { code: roleCode } : null, includeDriver: true });
   const where = requestedStatus ? { status: requestedStatus } : {};
   const { rows, meta } = await list(User, query, { where, include, searchFields: ['full_name', 'email', 'phone'] });
+  normalizeUserRoles(rows);
   ok(res, 'Users loaded', rows, meta);
 });
 
@@ -32,7 +30,7 @@ exports.createUser = asyncHandler(async (req, res) => {
   const driver = await syncUserIfDriver(user.id, { actorId: req.user.id });
   if (driver) await driver.update({ monthly_salary: Number(monthly_salary || 0), updated_by: req.user.id });
   await logAction({ req, action: 'create', module: 'users', recordId: user.id, newData: req.body });
-  created(res, 'User created', await User.findByPk(user.id, { include: includeRole }));
+  created(res, 'User created', await loadUserWithRole(user.id, { includeDriver: true }));
 });
 
 exports.updateUser = asyncHandler(async (req, res) => {
@@ -43,7 +41,7 @@ exports.updateUser = asyncHandler(async (req, res) => {
   const driver = await syncUserIfDriver(updated.id, { actorId: req.user.id });
   if (driver && monthly_salary !== undefined) await driver.update({ monthly_salary: Number(monthly_salary || 0), updated_by: req.user.id });
   await logAction({ req, action: 'update', module: 'users', recordId: user.id, oldData, newData: updated.toJSON() });
-  ok(res, 'User updated', updated);
+  ok(res, 'User updated', await loadUserWithRole(user.id, { includeDriver: true }));
 });
 
 exports.updateUserStatus = asyncHandler(async (req, res) => {
@@ -52,7 +50,7 @@ exports.updateUserStatus = asyncHandler(async (req, res) => {
   await user.update({ status: req.body.status });
   await syncUserIfDriver(user.id, { actorId: req.user.id });
   await logAction({ req, action: 'status', module: 'users', recordId: user.id, oldData, newData: user.toJSON() });
-  ok(res, 'User status updated', user);
+  ok(res, 'User status updated', await loadUserWithRole(user.id, { includeDriver: true }));
 });
 
 exports.resetUserPassword = asyncHandler(async (req, res) => {

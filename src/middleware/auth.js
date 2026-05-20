@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const config = require('../config/env');
-const { User, Role } = require('../models');
 const { attachPermissions } = require('../services/permissionService');
+const { loadUserWithRole } = require('../services/userService');
 const HttpError = require('../utils/httpError');
 
 const CACHE_TTL_MS = 30 * 1000;
@@ -15,7 +15,7 @@ const loadCachedUser = async (userId) => {
   if (inFlight.has(userId)) return inFlight.get(userId);
 
   const promise = (async () => {
-    const user = await User.findByPk(userId, { include: [{ model: Role, as: 'role' }] });
+    const user = await loadUserWithRole(userId, { includeDriver: true });
     if (!user || user.status !== 'active') return null;
     const safeUser = (await attachPermissions(user)).toJSON();
     userCache.set(userId, { user: safeUser, expiresAt: Date.now() + CACHE_TTL_MS });

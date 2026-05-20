@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost
--- Generation Time: May 19, 2026 at 05:12 PM
+-- Generation Time: May 20, 2026 at 09:00 PM
 -- Server version: 8.0.45
 -- PHP Version: 8.2.30
 
@@ -57,6 +57,7 @@ INSERT INTO `audit_logs` (`id`, `user_id`, `action`, `module`, `record_id`, `old
 
 CREATE TABLE `drivers` (
   `id` bigint UNSIGNED NOT NULL,
+  `user_id` bigint UNSIGNED DEFAULT NULL,
   `full_name` varchar(150) COLLATE utf8mb4_general_ci NOT NULL,
   `phone` varchar(50) COLLATE utf8mb4_general_ci DEFAULT NULL,
   `address` text COLLATE utf8mb4_general_ci,
@@ -75,9 +76,9 @@ CREATE TABLE `drivers` (
 -- Dumping data for table `drivers`
 --
 
-INSERT INTO `drivers` (`id`, `full_name`, `phone`, `address`, `id_number`, `vehicle_type`, `vehicle_plate_number`, `notes`, `status`, `created_by`, `updated_by`, `created_at`, `updated_at`) VALUES
-(1, 'Ahmad Driver', '03000000', 'Lebanon', 'ID-001', 'Motorcycle', 'PLATE-001', NULL, 'active', 3, NULL, '2026-05-18 12:32:27', '2026-05-18 12:32:27'),
-(2, 'asd', '123', NULL, NULL, NULL, NULL, NULL, 'active', 1, NULL, '2026-05-18 12:42:52', '2026-05-18 12:42:52');
+INSERT INTO `drivers` (`id`, `user_id`, `full_name`, `phone`, `address`, `id_number`, `vehicle_type`, `vehicle_plate_number`, `notes`, `status`, `created_by`, `updated_by`, `created_at`, `updated_at`) VALUES
+(1, 4, 'Ahmad Driver', '03000000', 'Lebanon', 'ID-001', 'Motorcycle', 'PLATE-001', NULL, 'active', 3, NULL, '2026-05-18 12:32:27', '2026-05-20 20:59:40'),
+(2, NULL, 'asd', '123', NULL, NULL, NULL, NULL, NULL, 'active', 1, NULL, '2026-05-18 12:42:52', '2026-05-18 12:42:52');
 
 -- --------------------------------------------------------
 
@@ -219,7 +220,8 @@ CREATE TABLE `roles` (
 INSERT INTO `roles` (`id`, `name`, `code`, `description`, `created_at`, `updated_at`) VALUES
 (1, 'Admin', 'admin', 'Full access to the whole system', '2026-05-18 12:32:27', '2026-05-18 12:32:27'),
 (2, 'Inventory', 'inventory', 'Can manage stock, stock movements, and purchase orders', '2026-05-18 12:32:27', '2026-05-18 12:32:27'),
-(3, 'Accountant', 'accountant', 'Can manage drivers, stock deduction requests, and payments', '2026-05-18 12:32:27', '2026-05-18 12:32:27');
+(3, 'Accountant', 'accountant', 'Can manage drivers, stock deduction requests, and payments', '2026-05-18 12:32:27', '2026-05-18 12:32:27'),
+(4, 'Driver', 'driver', 'Can access the driver portal and assigned stock requests', '2026-05-20 20:57:43', '2026-05-20 20:59:40');
 
 -- --------------------------------------------------------
 
@@ -356,7 +358,6 @@ INSERT INTO `suppliers` (`id`, `name`, `phone`, `email`, `address`, `notes`, `st
 
 CREATE TABLE `users` (
   `id` bigint UNSIGNED NOT NULL,
-  `role_id` bigint UNSIGNED NOT NULL,
   `full_name` varchar(150) COLLATE utf8mb4_general_ci NOT NULL,
   `email` varchar(150) COLLATE utf8mb4_general_ci NOT NULL,
   `phone` varchar(50) COLLATE utf8mb4_general_ci DEFAULT NULL,
@@ -371,10 +372,34 @@ CREATE TABLE `users` (
 -- Dumping data for table `users`
 --
 
-INSERT INTO `users` (`id`, `role_id`, `full_name`, `email`, `phone`, `password`, `status`, `last_login_at`, `created_at`, `updated_at`) VALUES
-(1, 1, 'System Admin', 'admin@example.com', NULL, '$2a$10$xRpBJLqyWz248qwKll5ku.rTPMNzm6yUzPeWLc91/fBXzYPI5Q0i2', 'active', '2026-05-19 17:07:49', '2026-05-18 12:32:27', '2026-05-19 17:07:49'),
-(2, 2, 'Inventory User', 'inventory@example.com', NULL, '$2y$10$replace_with_hashed_password', 'active', NULL, '2026-05-18 12:32:27', '2026-05-18 12:32:27'),
-(3, 3, 'Accountant User', 'accountant@example.com', NULL, '$2y$10$replace_with_hashed_password', 'active', NULL, '2026-05-18 12:32:27', '2026-05-18 12:32:27');
+INSERT INTO `users` (`id`, `full_name`, `email`, `phone`, `password`, `status`, `last_login_at`, `created_at`, `updated_at`) VALUES
+(1, 'System Admin', 'admin@example.com', NULL, '$2a$10$xRpBJLqyWz248qwKll5ku.rTPMNzm6yUzPeWLc91/fBXzYPI5Q0i2', 'active', '2026-05-19 17:07:49', '2026-05-18 12:32:27', '2026-05-19 17:07:49'),
+(2, 'Inventory User', 'inventory@example.com', NULL, '$2y$10$replace_with_hashed_password', 'active', NULL, '2026-05-18 12:32:27', '2026-05-18 12:32:27'),
+(3, 'Accountant User', 'accountant@example.com', NULL, '$2y$10$replace_with_hashed_password', 'active', NULL, '2026-05-18 12:32:27', '2026-05-18 12:32:27'),
+(4, 'Ahmad Driver', 'driver@example.com', '03000000', '$2a$10$vDQgvVHEhr1kYidXSEQU3OKDksWRfFD3YPE/fqcDK5n8UyT3pKXVO', 'active', NULL, '2026-05-20 20:59:40', '2026-05-20 20:59:40');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `user_roles`
+--
+
+CREATE TABLE `user_roles` (
+  `id` bigint UNSIGNED NOT NULL,
+  `user_id` bigint UNSIGNED NOT NULL,
+  `role_id` bigint UNSIGNED NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `user_roles`
+--
+
+INSERT INTO `user_roles` (`id`, `user_id`, `role_id`, `created_at`) VALUES
+(1, 1, 1, '2026-05-20 20:54:52'),
+(2, 2, 2, '2026-05-20 20:54:52'),
+(3, 3, 3, '2026-05-20 20:54:52'),
+(4, 4, 4, '2026-05-20 20:59:40');
 
 --
 -- Indexes for dumped tables
@@ -392,6 +417,7 @@ ALTER TABLE `audit_logs`
 --
 ALTER TABLE `drivers`
   ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uq_drivers_user` (`user_id`),
   ADD KEY `fk_drivers_created_by` (`created_by`),
   ADD KEY `fk_drivers_updated_by` (`updated_by`);
 
@@ -496,8 +522,15 @@ ALTER TABLE `suppliers`
 --
 ALTER TABLE `users`
   ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `email` (`email`),
-  ADD KEY `fk_users_role` (`role_id`);
+  ADD UNIQUE KEY `email` (`email`);
+
+--
+-- Indexes for table `user_roles`
+--
+ALTER TABLE `user_roles`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uq_user_roles_user` (`user_id`),
+  ADD KEY `idx_user_roles_role` (`role_id`);
 
 --
 -- AUTO_INCREMENT for dumped tables
@@ -549,7 +582,7 @@ ALTER TABLE `purchase_order_items`
 -- AUTO_INCREMENT for table `roles`
 --
 ALTER TABLE `roles`
-  MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT for table `stock_entries`
@@ -585,7 +618,13 @@ ALTER TABLE `suppliers`
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+
+--
+-- AUTO_INCREMENT for table `user_roles`
+--
+ALTER TABLE `user_roles`
+  MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- Constraints for dumped tables
@@ -602,7 +641,8 @@ ALTER TABLE `audit_logs`
 --
 ALTER TABLE `drivers`
   ADD CONSTRAINT `fk_drivers_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_drivers_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+  ADD CONSTRAINT `fk_drivers_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_drivers_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 --
 -- Constraints for table `items`
@@ -674,10 +714,11 @@ ALTER TABLE `suppliers`
   ADD CONSTRAINT `fk_suppliers_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 --
--- Constraints for table `users`
+-- Constraints for table `user_roles`
 --
-ALTER TABLE `users`
-  ADD CONSTRAINT `fk_users_role` FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `user_roles`
+  ADD CONSTRAINT `fk_user_roles_role` FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_user_roles_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
