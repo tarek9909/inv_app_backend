@@ -23,7 +23,7 @@ const attachPermissions = async (user) => {
 const userHasPermission = async (user, permissionKey) => {
   if (!user?.role) return false;
   if (user.role.code === 'admin') return true;
-  const keys = user.getDataValue?.('permissions') || await getPermissionKeysForRole(user.role);
+  const keys = user.permissions || user.getDataValue?.('permissions') || await getPermissionKeysForRole(user.role);
   return keys.includes(permissionKey);
 };
 

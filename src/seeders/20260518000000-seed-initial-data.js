@@ -14,7 +14,8 @@ module.exports = {
     await queryInterface.bulkInsert('roles', [
       { id: 1, name: 'Admin', code: 'admin', description: 'Full access to the whole system', created_at: now, updated_at: now },
       { id: 2, name: 'Inventory', code: 'inventory', description: 'Can manage stock, stock movements, and purchase orders', created_at: now, updated_at: now },
-      { id: 3, name: 'Accountant', code: 'accountant', description: 'Can manage drivers, stock deduction requests, and payments', created_at: now, updated_at: now }
+      { id: 3, name: 'Accountant', code: 'accountant', description: 'Can manage drivers, stock deduction requests, and payments', created_at: now, updated_at: now },
+      { id: 4, name: 'Driver', code: 'driver', description: 'Driver with portal access to view orders and confirm receipts', created_at: now, updated_at: now }
     ], { ignoreDuplicates: true });
 
     await queryInterface.bulkInsert('users', [
