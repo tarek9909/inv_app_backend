@@ -29,12 +29,13 @@ router.post('/monthly-targets', authenticate, requirePermission('targets.manage'
 router.patch('/monthly-targets/:id', authenticate, requirePermission('targets.manage'), validate(schemas.monthlyTargetUpdate), controller.updateMonthlyTarget);
 router.patch('/monthly-targets/:id/status', authenticate, requirePermission('targets.manage'), validate(schemas.monthlyTargetStatus), controller.updateMonthlyTargetStatus);
 
-router.get('/stock-requests', authenticate, requirePermission('stock_requests.view'), validate(schemas.pagination, 'query'), controller.listStockRequests);
+router.get('/stock-requests', authenticate, requirePermission('stock_requests.view'), validate(schemas.stockRequestListQuery, 'query'), controller.listStockRequests);
 router.post('/stock-requests', authenticate, requirePermission('stock_requests.create'), validate(schemas.stockRequestCreate), controller.createStockRequest);
 router.get('/stock-requests/:id', authenticate, requirePermission('stock_requests.view'), controller.getStockRequest);
 router.patch('/stock-requests/:id', authenticate, requirePermission('stock_requests.update'), validate(schemas.stockRequestUpdate), controller.updateStockRequest);
 router.post('/stock-requests/:id/accept', authenticate, requirePermission('stock_requests.accept'), controller.acceptStockRequest);
 router.post('/stock-requests/:id/complete', authenticate, requirePermission('stock_requests.complete'), validate(schemas.stockRequestComplete), controller.completeStockRequest);
+router.post('/stock-requests/:id/reconcile', authenticate, requirePermission('stock_requests.update'), validate(schemas.stockRequestReconcile), controller.reconcileStockRequest);
 router.post('/stock-requests/:id/cancel', authenticate, requirePermission('stock_requests.cancel'), controller.cancelStockRequest);
 router.post('/stock-requests/:id/print', authenticate, requirePermission('stock_requests.print'), controller.printStockRequest);
 

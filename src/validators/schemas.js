@@ -242,9 +242,32 @@ const stockRequestCreate = Joi.object({
   })).min(1).required()
 });
 
+const stockRequestListQuery = pagination.keys({
+  request_status: status('draft', 'pending', 'approved', 'completed', 'cancelled'),
+  request_type: status('stock_out', 'stock_return'),
+  payment_status: status('pending', 'partially_paid', 'paid', 'cancelled')
+});
+
+const stockRequestUpdateLine = Joi.object({
+  id,
+  item_id: id.required(),
+  quantity: qty.required(),
+  unit_price: money.required(),
+  notes: Joi.string().allow(null, '')
+});
+
 const stockRequestUpdate = Joi.object({
+  driver_id: id,
+  request_date: Joi.date().iso(),
+  request_type: status('stock_out', 'stock_return'),
+  discount_amount: money,
   notes: Joi.string().allow(null, ''),
-  request_status: status('draft', 'pending')
+  request_status: status('draft', 'pending'),
+  items: Joi.array().items(stockRequestUpdateLine).min(1)
+}).min(1);
+
+const stockRequestReconcile = Joi.object({
+  notes: Joi.string().allow(null, '')
 });
 
 const stockRequestComplete = Joi.object({
@@ -339,7 +362,9 @@ module.exports = {
   monthlyTargetUpdate,
   monthlyTargetStatus,
   stockRequestCreate,
+  stockRequestListQuery,
   stockRequestUpdate,
+  stockRequestReconcile,
   stockRequestComplete,
   paymentCreate,
   driverReceipt,

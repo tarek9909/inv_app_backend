@@ -29,6 +29,7 @@ const loadAppliedMigrationNames = async (sequelize) => {
 
 const listMigrationFiles = () => {
   const migrationsDir = path.resolve(__dirname, '../migrations');
+  if (!fs.existsSync(migrationsDir)) return [];
   return fs.readdirSync(migrationsDir)
     .filter((file) => file.endsWith('.js'))
     .filter((file) => !STARTUP_MIGRATION_SKIP.has(file))

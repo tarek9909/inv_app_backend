@@ -1,7 +1,8 @@
+const { Op } = require('sequelize');
 const { sequelize, StockRequest, StockRequestItem, StockRequestItemConfirmation, StockReservation, Driver, User, Item, Payment, StockRequestPrint, Setting } = require('../models');
 const HttpError = require('../utils/httpError');
 const { generateNumber, toMoney } = require('../utils/numbers');
-const { changeStock, toEffectiveBaseQuantity, getAvailableStock } = require('./stockService');
+const { changeStock, toEffectiveBaseQuantity, getAvailableBaseStock } = require('./stockService');
 const { logAction } = require('./auditService');
 const notificationService = require('./notificationService');
 const { withRoleInclude, normalizeUserRole } = require('./userService');
@@ -46,15 +47,40 @@ const withReceiptStatus = (request) => {
 
 const loadRequest = (requestId, options = {}) => StockRequest.findByPk(requestId, { include: includeStockRequest, ...options });
 
+const calculateTotals = (items, discountAmount = 0) => {
+  const subtotal = (items || []).reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unit_price || 0), 0);
+  const total = subtotal - Number(discountAmount || 0);
+  if (total < 0) throw new HttpError(400, 'Total amount cannot be negative');
+  return { subtotal: toMoney(subtotal), total: toMoney(total) };
+};
+
+const resolveLineStock = async (line, transaction) => {
+  const item = line.item || await Item.findByPk(line.item_id, { transaction, lock: transaction?.LOCK?.UPDATE });
+  if (!item) throw new HttpError(404, 'Item not found');
+  const baseQuantity = Number(line.base_quantity || toEffectiveBaseQuantity(line.quantity, item));
+  const { targetItem, availableBase } = await getAvailableBaseStock(item, transaction);
+  return { item, targetItem, baseQuantity, availableBase };
+};
+
 const ensureSufficientAvailable = async (request, transaction) => {
   if (request.request_type !== 'stock_out') return;
+  const requiredByItem = new Map();
   for (const line of request.items || []) {
-    const item = await Item.findByPk(line.item_id, { transaction, lock: transaction.LOCK.UPDATE });
-    if (!item) throw new HttpError(404, 'Item not found');
-    const available = await getAvailableStock(item, transaction);
-    const quantity = Number(line.quantity || 0);
-    if (available < quantity) {
-      throw new HttpError(400, `Insufficient available stock for ${item.name}. Available: ${available}, requested: ${quantity}`);
+    const stock = await resolveLineStock(line, transaction);
+    const targetId = Number(stock.targetItem.id);
+    const current = requiredByItem.get(targetId) || {
+      item: stock.item,
+      targetItem: stock.targetItem,
+      availableBase: stock.availableBase,
+      requiredBase: 0
+    };
+    current.requiredBase += stock.baseQuantity;
+    requiredByItem.set(targetId, current);
+  }
+
+  for (const requirement of requiredByItem.values()) {
+    if (requirement.availableBase < requirement.requiredBase) {
+      throw new HttpError(400, `Insufficient available stock for ${requirement.targetItem.name}. Available: ${toMoney(requirement.availableBase)}, requested: ${toMoney(requirement.requiredBase)}`);
     }
   }
 };
@@ -62,14 +88,19 @@ const ensureSufficientAvailable = async (request, transaction) => {
 const createReservations = async (request, req, transaction) => {
   if (request.request_type !== 'stock_out') return [];
   await ensureSufficientAvailable(request, transaction);
-  return StockReservation.bulkCreate((request.items || []).map((line) => ({
-    stock_request_id: request.id,
-    stock_request_item_id: line.id,
-    item_id: line.item_id,
-    quantity: line.quantity,
-    status: 'active',
-    created_by: req.user.id
-  })), { transaction });
+  const reservations = [];
+  for (const line of request.items || []) {
+    const stock = await resolveLineStock(line, transaction);
+    reservations.push({
+      stock_request_id: request.id,
+      stock_request_item_id: line.id,
+      item_id: stock.targetItem.id,
+      quantity: toMoney(stock.baseQuantity),
+      status: 'active',
+      created_by: req.user.id
+    });
+  }
+  return StockReservation.bulkCreate(reservations, { transaction });
 };
 
 const updateReservations = (requestId, values, transaction) => {
@@ -78,6 +109,11 @@ const updateReservations = (requestId, values, transaction) => {
     ...values,
     updated_at: new Date()
   }, { where: { stock_request_id: requestId, status: 'active' }, transaction });
+};
+
+const refreshActiveReservations = async (request, req, transaction) => {
+  await updateReservations(request.id, { status: 'released', released_at: new Date() }, transaction);
+  return createReservations(request, req, transaction);
 };
 
 const getFulfillmentMode = async (transaction) => {
@@ -97,9 +133,7 @@ const createStockRequest = async (payload, req) => sequelize.transaction(async (
   const driver = await Driver.findByPk(payload.driver_id, { transaction });
   if (!driver || driver.status !== 'active') throw new HttpError(400, 'Driver is not active');
 
-  const subtotal = payload.items.reduce((sum, item) => sum + Number(item.quantity) * Number(item.unit_price), 0);
-  const total = subtotal - Number(payload.discount_amount || 0);
-  if (total < 0) throw new HttpError(400, 'Total amount cannot be negative');
+  const totals = calculateTotals(payload.items, payload.discount_amount);
   const isReturn = payload.request_type === 'stock_return';
 
   const request = await StockRequest.create({
@@ -108,10 +142,10 @@ const createStockRequest = async (payload, req) => sequelize.transaction(async (
     request_date: payload.request_date,
     request_type: payload.request_type,
     commission_location_id: driver.current_location_id || null,
-    subtotal: toMoney(subtotal),
+    subtotal: totals.subtotal,
     discount_amount: payload.discount_amount || 0,
-    total_amount: toMoney(total),
-    remaining_amount: isReturn ? 0 : toMoney(total),
+    total_amount: totals.total,
+    remaining_amount: isReturn ? 0 : totals.total,
     payment_status: isReturn ? 'paid' : 'pending',
     notes: payload.notes,
     created_by: req.user.id
@@ -255,6 +289,154 @@ const acceptStockRequest = async (requestId, req) => sequelize.transaction(async
   return withReceiptStatus(await loadRequest(request.id, { transaction }));
 });
 
+const updateStockRequest = async (requestId, payload, req) => sequelize.transaction(async (transaction) => {
+  const request = await loadRequest(requestId, { transaction, lock: transaction.LOCK.UPDATE });
+  if (!request) throw new HttpError(404, 'Stock request not found');
+  if (!['draft', 'pending'].includes(request.request_status)) {
+    throw new HttpError(400, 'Only draft or pending requests can be edited');
+  }
+
+  const oldData = request.toJSON();
+  const nextDriverId = payload.driver_id ?? request.driver_id;
+  const nextRequestType = payload.request_type ?? request.request_type;
+  const nextDiscount = payload.discount_amount ?? request.discount_amount ?? 0;
+
+  const driver = await Driver.findByPk(nextDriverId, { transaction });
+  if (!driver || driver.status !== 'active') throw new HttpError(400, 'Driver is not active');
+
+  let nextItems = request.items || [];
+  if (payload.items) {
+    const existingById = new Map((request.items || []).map((line) => [Number(line.id), line]));
+    const keepIds = payload.items.filter((line) => line.id).map((line) => Number(line.id));
+
+    for (const line of payload.items) {
+      if (line.id && !existingById.has(Number(line.id))) {
+        throw new HttpError(400, 'Request item does not belong to this stock request');
+      }
+    }
+
+    if (keepIds.length) {
+      await StockRequestItem.destroy({
+        where: {
+          stock_request_id: request.id,
+          id: { [Op.notIn]: keepIds }
+        },
+        transaction
+      });
+    } else {
+      await StockRequestItem.destroy({ where: { stock_request_id: request.id }, transaction });
+    }
+
+    for (const line of payload.items) {
+      const item = await Item.findByPk(line.item_id, { transaction });
+      if (!item) throw new HttpError(404, 'Item not found');
+      const values = {
+        stock_request_id: request.id,
+        item_id: line.item_id,
+        quantity: line.quantity,
+        base_quantity: toMoney(toEffectiveBaseQuantity(line.quantity, item)),
+        unit_price: line.unit_price,
+        notes: line.notes || null
+      };
+      if (line.id) {
+        await existingById.get(Number(line.id)).update(values, { transaction });
+      } else {
+        await StockRequestItem.create(values, { transaction });
+      }
+    }
+
+    nextItems = await StockRequestItem.findAll({
+      where: { stock_request_id: request.id },
+      include: [{ model: Item, as: 'item' }],
+      transaction
+    });
+  }
+
+  const totals = calculateTotals(nextItems, nextDiscount);
+  const paidAmount = Number(request.paid_amount || 0);
+  if (nextRequestType !== 'stock_return' && paidAmount > Number(totals.total)) {
+    throw new HttpError(400, 'Total amount cannot be less than already paid amount');
+  }
+  const isReturn = nextRequestType === 'stock_return';
+  const remainingAmount = isReturn ? 0 : toMoney(Number(totals.total) - paidAmount);
+
+  await request.update({
+    driver_id: nextDriverId,
+    request_date: payload.request_date ?? request.request_date,
+    request_type: nextRequestType,
+    request_status: payload.request_status ?? request.request_status,
+    commission_location_id: driver.current_location_id || null,
+    subtotal: totals.subtotal,
+    discount_amount: nextDiscount,
+    total_amount: totals.total,
+    paid_amount: isReturn ? 0 : request.paid_amount,
+    remaining_amount: remainingAmount,
+    payment_status: isReturn ? 'paid' : paidAmount > 0 ? 'partially_paid' : 'pending',
+    notes: payload.notes ?? request.notes
+  }, { transaction });
+
+  await logAction({ req, action: 'update', module: 'stock_requests', recordId: request.id, oldData, newData: payload, transaction });
+  return withReceiptStatus(await loadRequest(request.id, { transaction }));
+});
+
+const reconcileStockRequestReceipt = async (requestId, req, payload = {}) => sequelize.transaction(async (transaction) => {
+  const request = await loadRequest(requestId, { transaction, lock: transaction.LOCK.UPDATE });
+  if (!request) throw new HttpError(404, 'Stock request not found');
+  if (request.request_status !== 'approved') throw new HttpError(400, 'Only accepted requests can be reconciled');
+  if (!request.driver_received_at) throw new HttpError(400, 'Driver receipt confirmation is required before reconciliation');
+
+  const receiptStatus = receiptStatusFor(request);
+  if (!['receipt_partial', 'receipt_not_confirmed'].includes(receiptStatus)) {
+    throw new HttpError(400, 'Only partial or not-confirmed receipts can be reconciled');
+  }
+
+  const oldData = request.toJSON();
+  const keptLines = [];
+  for (const line of request.items || []) {
+    const confirmedQuantity = line.confirmation?.confirmed ? Number(line.confirmation.confirmed_quantity || 0) : 0;
+    if (confirmedQuantity <= 0) {
+      await line.destroy({ transaction });
+      continue;
+    }
+    const item = line.item || await Item.findByPk(line.item_id, { transaction });
+    if (!item) throw new HttpError(404, 'Item not found');
+    await line.update({
+      quantity: toMoney(confirmedQuantity),
+      base_quantity: toMoney(toEffectiveBaseQuantity(confirmedQuantity, item))
+    }, { transaction });
+    keptLines.push(line);
+  }
+
+  if (!keptLines.length) {
+    throw new HttpError(400, 'No confirmed quantities remain; cancel the request instead');
+  }
+
+  const freshLines = await StockRequestItem.findAll({
+    where: { stock_request_id: request.id },
+    include: [{ model: Item, as: 'item' }, { model: StockRequestItemConfirmation, as: 'confirmation' }],
+    transaction
+  });
+  const totals = calculateTotals(freshLines, request.discount_amount);
+  const paidAmount = Number(request.paid_amount || 0);
+  if (request.request_type !== 'stock_return' && paidAmount > Number(totals.total)) {
+    throw new HttpError(400, 'Reconciled total cannot be less than already paid amount');
+  }
+  const remainingAmount = request.request_type === 'stock_return' ? 0 : toMoney(Number(totals.total) - paidAmount);
+
+  await request.update({
+    subtotal: totals.subtotal,
+    total_amount: totals.total,
+    remaining_amount: remainingAmount,
+    payment_status: request.request_type === 'stock_return' ? 'paid' : paidAmount > 0 ? 'partially_paid' : 'pending',
+    driver_receipt_notes: payload.notes ?? request.driver_receipt_notes
+  }, { transaction });
+
+  const freshRequest = await loadRequest(request.id, { transaction });
+  await refreshActiveReservations(freshRequest, req, transaction);
+  await logAction({ req, action: 'reconcile_receipt', module: 'stock_requests', recordId: request.id, oldData, newData: freshRequest.toJSON(), transaction });
+  return withReceiptStatus(await loadRequest(request.id, { transaction }));
+});
+
 const recordStockRequestPrint = async (requestId, payload, req) => {
   const request = await loadRequest(requestId);
   if (!request) throw new HttpError(404, 'Stock request not found');
@@ -364,10 +546,12 @@ module.exports = {
   includeStockRequestList,
   withReceiptStatus,
   createStockRequest,
+  updateStockRequest,
   acceptStockRequest,
   completeStockRequest,
   cancelStockRequest,
   recordStockRequestPrint,
   markDriverInvoiceViewed,
-  submitDriverReceipt
+  submitDriverReceipt,
+  reconcileStockRequestReceipt
 };

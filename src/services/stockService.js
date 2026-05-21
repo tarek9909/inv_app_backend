@@ -12,6 +12,15 @@ const toEffectiveBaseQuantity = (quantity, item) => {
   return Number(quantity);
 };
 
+const getStockBearingItem = async (item, transaction, lock) => {
+  if (!item?.is_carton) return item;
+  const cartonQuantity = Number(item.carton_quantity || 0);
+  if (cartonQuantity <= 0) throw new HttpError(400, 'Carton quantity must be greater than 0');
+  const targetItem = await Item.findByPk(item.carton_item_id, { transaction, ...(lock ? { lock } : {}) });
+  if (!targetItem) throw new HttpError(400, 'Carton contained item is not available');
+  return targetItem;
+};
+
 const syncCartonStocks = async ({ containedItemId, transaction }) => {
   const cartons = await Item.findAll({ where: { carton_item_id: containedItemId }, transaction });
   const contained = await Item.findByPk(containedItemId, { transaction });
@@ -40,8 +49,28 @@ const getReservedStockByItemIds = async (itemIds, transaction) => {
 
 const attachAvailability = async (items, transaction) => {
   const rows = asArray(items);
-  const reservedByItem = await getReservedStockByItemIds(rows.map((item) => item.id), transaction);
+  const cartonContainedIds = rows
+    .filter((item) => item.is_carton && item.carton_item_id)
+    .map((item) => Number(item.carton_item_id));
+  const reservedByItem = await getReservedStockByItemIds([
+    ...rows.map((item) => item.id),
+    ...cartonContainedIds
+  ], transaction);
+  const containedItems = cartonContainedIds.length
+    ? await Item.findAll({ where: { id: { [Op.in]: [...new Set(cartonContainedIds)] } }, transaction })
+    : [];
+  const containedById = new Map(containedItems.map((item) => [Number(item.id), item]));
   rows.forEach((item) => {
+    if (item.is_carton) {
+      const cartonQuantity = Number(item.carton_quantity || 0);
+      const contained = item.carton_item || containedById.get(Number(item.carton_item_id));
+      const containedCurrent = Number(contained?.current_stock || 0);
+      const containedReserved = reservedByItem.get(Number(item.carton_item_id)) || 0;
+      item.setDataValue?.('reserved_stock', toMoney(cartonQuantity > 0 ? containedReserved / cartonQuantity : 0));
+      item.setDataValue?.('available_stock', toMoney(cartonQuantity > 0 ? (containedCurrent - containedReserved) / cartonQuantity : 0));
+      return;
+    }
+
     const reserved = reservedByItem.get(Number(item.id)) || 0;
     const current = Number(item.current_stock || 0);
     item.setDataValue?.('reserved_stock', toMoney(reserved));
@@ -51,8 +80,24 @@ const attachAvailability = async (items, transaction) => {
 };
 
 const getAvailableStock = async (item, transaction) => {
-  const reserved = (await getReservedStockByItemIds([item.id], transaction)).get(Number(item.id)) || 0;
-  return Number(item.current_stock || 0) - reserved;
+  const targetItem = await getStockBearingItem(item, transaction);
+  const reserved = (await getReservedStockByItemIds([targetItem.id], transaction)).get(Number(targetItem.id)) || 0;
+  const availableBase = Number(targetItem.current_stock || 0) - reserved;
+  if (item?.is_carton) {
+    const cartonQuantity = Number(item.carton_quantity || 0);
+    return cartonQuantity > 0 ? availableBase / cartonQuantity : 0;
+  }
+  return availableBase;
+};
+
+const getAvailableBaseStock = async (item, transaction) => {
+  const targetItem = await getStockBearingItem(item, transaction, transaction?.LOCK?.UPDATE);
+  const reserved = (await getReservedStockByItemIds([targetItem.id], transaction)).get(Number(targetItem.id)) || 0;
+  return {
+    targetItem,
+    reserved,
+    availableBase: Number(targetItem.current_stock || 0) - reserved
+  };
 };
 
 const batchStatusFor = (expiryDate, remaining) => {
@@ -272,9 +317,11 @@ module.exports = {
   changeStock,
   syncCartonStocks,
   toEffectiveBaseQuantity,
+  getStockBearingItem,
   unitLabelFor,
   attachAvailability,
   getAvailableStock,
+  getAvailableBaseStock,
   getReservedStockByItemIds,
   listBatches,
   expiryRisk,

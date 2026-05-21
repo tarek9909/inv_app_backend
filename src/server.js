@@ -2,6 +2,7 @@ const app = require('./app');
 const config = require('./config/env');
 const { sequelize } = require('./models');
 const { runPendingMigrations, runRepeatableMigrations } = require('./services/migrationService');
+const { syncPermissionCatalog } = require('./services/permissionService');
 
 const start = async () => {
   await sequelize.authenticate();
@@ -9,6 +10,7 @@ const start = async () => {
     await runPendingMigrations(sequelize);
   }
   await runRepeatableMigrations(sequelize);
+  await syncPermissionCatalog();
   app.listen(config.port, () => {
     console.log(`API running on http://localhost:${config.port}`);
     console.log(`Swagger docs on http://localhost:${config.port}/api-docs`);

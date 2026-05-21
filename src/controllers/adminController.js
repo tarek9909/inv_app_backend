@@ -6,7 +6,7 @@ const { createUser, updateUser, withRoleInclude, normalizeUserRoles, loadUserWit
 const { syncUserIfDriver } = require('../services/driverSyncService');
 const { logAction } = require('../services/auditService');
 const { recordLoginEvent } = require('../services/authService');
-const { userHasPermission } = require('../services/permissionService');
+const { catalogPermissionRows, syncPermissionCatalog, userHasPermission } = require('../services/permissionService');
 const { permissions: permissionCatalog } = require('../config/permissions');
 const asyncHandler = require('../utils/asyncHandler');
 const { ok, created } = require('../utils/responses');
@@ -95,8 +95,9 @@ exports.updateRole = asyncHandler(async (req, res) => {
 });
 
 exports.listPermissions = asyncHandler(async (req, res) => {
+  await syncPermissionCatalog();
   const rows = await Permission.findAll({ order: [['module', 'ASC'], ['feature', 'ASC'], ['permission_key', 'ASC']] });
-  ok(res, 'Permissions loaded', rows.length ? rows : permissionCatalog);
+  ok(res, 'Permissions loaded', rows.length ? rows : catalogPermissionRows());
 });
 
 exports.getRolePermissions = asyncHandler(async (req, res) => {
@@ -116,6 +117,7 @@ exports.updateRolePermissions = asyncHandler(async (req, res) => {
 
   const allowedKeys = permissionCatalog.map((permission) => permission.key);
   const keys = [...new Set(req.body.permissions || [])].filter((key) => allowedKeys.includes(key));
+  await syncPermissionCatalog();
   const permissionRows = await Permission.findAll({ where: { permission_key: keys } });
 
   await sequelize.transaction(async (transaction) => {

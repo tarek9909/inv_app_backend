@@ -286,7 +286,12 @@ exports.updateMonthlyTargetStatus = asyncHandler(async (req, res) => {
 exports.listStockRequests = asyncHandler(async (req, res) => {
   const itemCountSql = '(SELECT COUNT(*) FROM stock_request_items sri WHERE sri.stock_request_id = stock_requests.id)';
   const confirmedCountSql = '(SELECT COUNT(*) FROM stock_request_items sri JOIN stock_request_item_confirmations src ON src.stock_request_item_id = sri.id WHERE sri.stock_request_id = stock_requests.id AND src.confirmed = 1 AND src.confirmed_quantity >= sri.quantity)';
+  const where = {};
+  if (req.query.request_status) where.request_status = req.query.request_status;
+  if (req.query.request_type) where.request_type = req.query.request_type;
+  if (req.query.payment_status) where.payment_status = req.query.payment_status;
   const { rows, meta } = await list(StockRequest, req.query, {
+    where,
     include: stockRequestService.includeStockRequestList,
     attributes: { include: [[literal(itemCountSql), 'item_count'], [literal(confirmedCountSql), 'confirmed_count']] },
     searchFields: ['request_number', 'request_status', 'payment_status']
@@ -306,11 +311,13 @@ exports.createStockRequest = asyncHandler(async (req, res) => {
 });
 
 exports.updateStockRequest = asyncHandler(async (req, res) => {
-  const request = await findOrFail(StockRequest, req.params.id, { name: 'Stock request' });
-  const oldData = request.toJSON();
-  await request.update(req.body);
-  await logAction({ req, action: 'update', module: 'stock_requests', recordId: request.id, oldData, newData: request.toJSON() });
+  const request = await stockRequestService.updateStockRequest(req.params.id, req.body, req);
   ok(res, 'Stock request updated', request);
+});
+
+exports.reconcileStockRequest = asyncHandler(async (req, res) => {
+  const request = await stockRequestService.reconcileStockRequestReceipt(req.params.id, req, req.body || {});
+  ok(res, 'Stock request reconciled', request);
 });
 
 exports.completeStockRequest = asyncHandler(async (req, res) => {
