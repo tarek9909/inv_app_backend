@@ -7,6 +7,8 @@ const { syncUserIfDriver } = require('../services/driverSyncService');
 const { logAction } = require('../services/auditService');
 const { recordLoginEvent } = require('../services/authService');
 const { catalogPermissionRows, syncPermissionCatalog, userHasPermission } = require('../services/permissionService');
+const { revokeAllForUser } = require('../services/tokenBlacklist');
+const { invalidateUserCache } = require('../middleware/auth');
 const { permissions: permissionCatalog } = require('../config/permissions');
 const asyncHandler = require('../utils/asyncHandler');
 const { ok, created } = require('../utils/responses');
@@ -49,6 +51,11 @@ exports.updateUserStatus = asyncHandler(async (req, res) => {
   const oldData = user.toJSON();
   await user.update({ status: req.body.status });
   await syncUserIfDriver(user.id, { actorId: req.user.id });
+  // Revoke all active tokens if user is being deactivated/blocked
+  if (req.body.status !== 'active') {
+    revokeAllForUser(user.id);
+    invalidateUserCache(user.id);
+  }
   await logAction({ req, action: 'status', module: 'users', recordId: user.id, oldData, newData: user.toJSON() });
   ok(res, 'User status updated', await loadUserWithRole(user.id, { includeDriver: true }));
 });
@@ -61,6 +68,9 @@ exports.resetUserPassword = asyncHandler(async (req, res) => {
   const mustChangePassword = req.body.must_change_password !== false;
   await user.update({ password, must_change_password: mustChangePassword });
   await recordLoginEvent({ user_id: user.id, email: user.email, event_type: 'admin_reset_password', ip_address: req.ip, user_agent: req.headers['user-agent'] });
+  // Revoke all existing tokens so the user must log in again
+  revokeAllForUser(user.id);
+  invalidateUserCache(user.id);
   await logAction({ req, action: 'reset_password', module: 'users', recordId: user.id, oldData, newData: { id: user.id, must_change_password: mustChangePassword } });
   ok(res, mustChangePassword ? 'Password reset; user must change it on next login' : 'Password changed');
 });

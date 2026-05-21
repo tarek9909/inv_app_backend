@@ -1,4 +1,5 @@
 const authService = require('../services/authService');
+const { revokeToken } = require('../services/tokenBlacklist');
 const asyncHandler = require('../utils/asyncHandler');
 const { ok } = require('../utils/responses');
 
@@ -12,6 +13,9 @@ exports.me = asyncHandler(async (req, res) => {
 });
 
 exports.logout = asyncHandler(async (req, res) => {
+  if (req.token && req.tokenPayload?.exp) {
+    revokeToken(req.token, req.tokenPayload.exp);
+  }
   ok(res, 'Logout successful');
 });
 

@@ -6,6 +6,7 @@ const { ok } = require('../utils/responses');
 const HttpError = require('../utils/httpError');
 
 const isAdmin = (user) => user?.role?.code === 'admin';
+const DRIVER_VISIBLE_STATUSES = ['approved', 'completed', 'cancelled'];
 
 const loadDriverForUser = async (userId) => {
   const driver = await Driver.findOne({ where: { user_id: userId } });
@@ -30,7 +31,7 @@ exports.listStockRequests = asyncHandler(async (req, res) => {
   const rows = await StockRequest.findAll({
     where: admin ? {} : {
       driver_id: driver.id,
-      request_status: { [Op.in]: ['approved', 'completed'] }
+      request_status: { [Op.in]: DRIVER_VISIBLE_STATUSES }
     },
     include: stockRequestService.includeStockRequestList,
     attributes: { include: [[literal(itemCountSql), 'item_count'], [literal(confirmedCountSql), 'confirmed_count']] },
@@ -48,7 +49,7 @@ exports.getStockRequest = asyncHandler(async (req, res) => {
     where: admin ? { id: req.params.id } : {
       id: req.params.id,
       driver_id: driver.id,
-      request_status: { [Op.in]: ['approved', 'completed'] }
+      request_status: { [Op.in]: DRIVER_VISIBLE_STATUSES }
     },
     include: stockRequestService.includeStockRequest
   });

@@ -350,6 +350,16 @@ exports.createPayment = asyncHandler(async (req, res) => {
   created(res, 'Payment created', payment);
 });
 
+exports.voidPayment = asyncHandler(async (req, res) => {
+  const payment = await paymentService.voidPayment(req.params.id, req.body, req);
+  ok(res, 'Payment voided', payment);
+});
+
+exports.refundPayment = asyncHandler(async (req, res) => {
+  const refund = await paymentService.refundPayment(req.body, req);
+  created(res, 'Refund issued', refund);
+});
+
 exports.deleteDriver = asyncHandler(async (req, res) => {
   const driver = await findOrFail(Driver, req.params.id, { name: 'Driver' });
   const stockRequests = await StockRequest.count({ where: { driver_id: driver.id } });

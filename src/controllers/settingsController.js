@@ -1,6 +1,7 @@
 const { Setting } = require('../models');
 const { logAction } = require('../services/auditService');
 const asyncHandler = require('../utils/asyncHandler');
+const { settingsCache: reportSettingsCache, reportCache } = require('../utils/cache');
 const { ok } = require('../utils/responses');
 
 const SETTING_KEYS = {
@@ -12,15 +13,15 @@ const SETTING_KEYS = {
   commission_source_status: ['completed']
 };
 
-let settingsCache = { expiresAt: 0, data: null };
+let controllerSettingsCache = { expiresAt: 0, data: null };
 const SETTINGS_CACHE_MS = 30 * 1000;
 
 const loadSettings = async ({ force = false } = {}) => {
-  if (!force && settingsCache.data && settingsCache.expiresAt > Date.now()) return settingsCache.data;
+  if (!force && controllerSettingsCache.data && controllerSettingsCache.expiresAt > Date.now()) return controllerSettingsCache.data;
   const rows = await Setting.findAll({ order: [['setting_key', 'ASC']] });
   const settings = {};
   rows.forEach((row) => { settings[row.setting_key] = row.setting_value || ''; });
-  settingsCache = { data: settings, expiresAt: Date.now() + SETTINGS_CACHE_MS };
+  controllerSettingsCache = { data: settings, expiresAt: Date.now() + SETTINGS_CACHE_MS };
   return settings;
 };
 
@@ -52,5 +53,7 @@ exports.updateSettings = asyncHandler(async (req, res) => {
   }
 
   await logAction({ req, action: 'update', module: 'settings', newData: updates, oldData });
+  reportSettingsCache.invalidate('commission_settings');
+  reportCache.invalidatePrefix('monthly_data:');
   ok(res, 'Settings updated', await loadSettings({ force: true }));
 });

@@ -337,6 +337,11 @@ const Payment = sequelize.define('payments', {
   payment_date: { type: DataTypes.DATE, allowNull: false },
   notes: DataTypes.TEXT,
   received_by: DataTypes.BIGINT.UNSIGNED,
+  is_void: { type: DataTypes.BOOLEAN, defaultValue: false },
+  voided_at: DataTypes.DATE,
+  voided_by: DataTypes.BIGINT.UNSIGNED,
+  void_reason: DataTypes.TEXT,
+  voided_by_payment_id: DataTypes.BIGINT.UNSIGNED,
   created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
 }, { tableName: 'payments', timestamps: false });
 

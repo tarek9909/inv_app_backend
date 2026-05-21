@@ -42,6 +42,7 @@ const permissions = [
   ['stock_requests.print', 'Fleet', 'Stock Requests', 'Print accepted stock requests'],
   ['payments.view', 'Fleet', 'Payments', 'View payments'],
   ['payments.create', 'Fleet', 'Payments', 'Record payments'],
+  ['payments.void', 'Fleet', 'Payments', 'Void or refund payments'],
   ['reports.view', 'Reports', 'Reports', 'View reports'],
   ['notifications.view', 'Notifications', 'Notifications', 'View in-app notifications'],
   ['attachments.manage', 'Attachments', 'Files', 'Upload and manage record attachments'],
@@ -101,6 +102,7 @@ const defaultRolePermissions = {
     'stock_requests.print',
     'payments.view',
     'payments.create',
+    'payments.void',
     'notifications.view',
     'attachments.manage'
   ],

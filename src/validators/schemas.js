@@ -285,6 +285,18 @@ const paymentCreate = Joi.object({
   notes: Joi.string().allow(null, '')
 });
 
+const paymentVoid = Joi.object({
+  reason: Joi.string().min(3).max(500).required()
+});
+
+const paymentRefund = Joi.object({
+  stock_request_id: id.required(),
+  amount: qty.required(),
+  payment_method: status('cash', 'bank_transfer', 'other').default('cash'),
+  payment_date: Joi.date().iso(),
+  reason: Joi.string().min(3).max(500).required()
+});
+
 const driverReceipt = Joi.object({
   notes: Joi.string().allow(null, ''),
   items: Joi.array().items(Joi.object({
@@ -367,6 +379,8 @@ module.exports = {
   stockRequestReconcile,
   stockRequestComplete,
   paymentCreate,
+  paymentVoid,
+  paymentRefund,
   driverReceipt,
   itemLookup,
   notificationList,

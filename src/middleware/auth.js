@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const config = require('../config/env');
 const { attachPermissions } = require('../services/permissionService');
 const { loadUserWithRole } = require('../services/userService');
+const { isTokenRevoked, isUserTokenRevoked } = require('../services/tokenBlacklist');
 const HttpError = require('../utils/httpError');
 
 const CACHE_TTL_MS = 30 * 1000;
@@ -26,6 +27,11 @@ const loadCachedUser = async (userId) => {
   return promise;
 };
 
+const invalidateUserCache = (userId) => {
+  if (userId === null || userId === undefined) return;
+  userCache.delete(Number(userId));
+};
+
 const authenticate = async (req, res, next) => {
   try {
     const header = req.headers.authorization || '';
@@ -33,12 +39,24 @@ const authenticate = async (req, res, next) => {
 
     if (!token) throw new HttpError(401, 'Authentication token is required');
 
+    if (isTokenRevoked(token)) {
+      throw new HttpError(401, 'Token has been revoked');
+    }
+
     const payload = jwt.verify(token, config.jwt.secret);
+
+    if (isUserTokenRevoked(payload.id, payload.iat)) {
+      throw new HttpError(401, 'Token has been revoked');
+    }
+
     const user = await loadCachedUser(payload.id);
 
     if (!user || user.status !== 'active') throw new HttpError(401, 'User is not allowed to access the system');
 
     req.user = user;
+    req.token = token;
+    req.tokenPayload = payload;
+
     const allowedWhileChanging = ['/auth/me', '/auth/me/password', '/auth/logout', '/me', '/me/password', '/logout'];
     if (req.user.must_change_password && !allowedWhileChanging.includes(req.path)) {
       throw new HttpError(403, 'Password change is required before continuing');
@@ -50,3 +68,4 @@ const authenticate = async (req, res, next) => {
 };
 
 module.exports = authenticate;
+module.exports.invalidateUserCache = invalidateUserCache;

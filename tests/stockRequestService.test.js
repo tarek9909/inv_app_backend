@@ -14,7 +14,7 @@ describe('stock request accounting fixes', () => {
       Role: {},
       User: {},
       Item: { findByPk: jest.fn() },
-      Payment: { create: jest.fn() },
+      Payment: { count: jest.fn().mockResolvedValue(0), create: jest.fn() },
       StockRequestPrint: { create: jest.fn() },
       Setting: { findOne: jest.fn().mockResolvedValue({ setting_value: settingValue }) }
     };

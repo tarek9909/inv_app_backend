@@ -41,5 +41,7 @@ router.post('/stock-requests/:id/print', authenticate, requirePermission('stock_
 
 router.get('/payments', authenticate, requirePermission('payments.view'), validate(schemas.pagination, 'query'), controller.listPayments);
 router.post('/payments', authenticate, requirePermission('payments.create'), validate(schemas.paymentCreate), controller.createPayment);
+router.post('/payments/refund', authenticate, requirePermission('payments.void'), validate(schemas.paymentRefund), controller.refundPayment);
+router.post('/payments/:id/void', authenticate, requirePermission('payments.void'), validate(schemas.paymentVoid), controller.voidPayment);
 
 module.exports = router;

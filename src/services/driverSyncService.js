@@ -8,7 +8,7 @@ const driverInclude = [{
   include: [{ model: Role, as: 'role', where: { code: 'driver' }, required: true }]
 }];
 let lastDriverRoleSyncAt = 0;
-const DRIVER_ROLE_SYNC_COOLDOWN_MS = 60 * 1000;
+const DRIVER_ROLE_SYNC_COOLDOWN_MS = 5 * 1000;
 
 const syncDriverUser = async (user, { transaction, actorId } = {}) => {
   if (!user) return null;

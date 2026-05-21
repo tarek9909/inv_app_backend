@@ -267,7 +267,7 @@ const completeStockRequest = async (requestId, req, payload = {}) => sequelize.t
 const acceptStockRequest = async (requestId, req) => sequelize.transaction(async (transaction) => {
   const request = await loadRequest(requestId, { transaction, lock: transaction.LOCK.UPDATE });
   if (!request) throw new HttpError(404, 'Stock request not found');
-  if (!['draft', 'pending'].includes(request.request_status)) throw new HttpError(400, 'Only draft or pending requests can be accepted');
+  if (request.request_status !== 'pending') throw new HttpError(400, 'Only pending requests can be accepted');
 
   const oldData = request.toJSON();
   await createReservations(request, req, transaction);
@@ -524,6 +524,15 @@ const cancelStockRequest = async (requestId, req) => sequelize.transaction(async
   const request = await StockRequest.findByPk(requestId, { transaction });
   if (!request) throw new HttpError(404, 'Stock request not found');
   if (request.request_status === 'completed') throw new HttpError(400, 'Completed stock requests cannot be cancelled');
+
+  // Block cancellation if there are non-voided payments
+  const activePayments = await Payment.count({
+    where: { stock_request_id: request.id, is_void: false, amount: { [Op.gt]: 0 } },
+    transaction
+  });
+  if (activePayments > 0) {
+    throw new HttpError(400, 'Cannot cancel a request with recorded payments. Void the payments first.');
+  }
 
   const oldData = request.toJSON();
   await request.update({ request_status: 'cancelled', payment_status: 'cancelled', remaining_amount: 0 }, { transaction });
