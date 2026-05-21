@@ -25,9 +25,8 @@ const setValue = (record, key, value) => {
   if (!record) return;
   if (typeof record.setDataValue === 'function') {
     record.setDataValue(key, value);
-  } else {
-    record[key] = value;
   }
+  record[key] = value;
 };
 
 const hasLoadedValue = (record, key) => {
@@ -40,8 +39,9 @@ const normalizeUserRole = (user) => {
   if (!user) return user;
   const userRole = getValue(user, 'user_role');
   const roles = getValue(user, 'roles');
-  const role = getValue(user, 'role') || userRole?.role || roles?.[0] || null;
-  const roleId = role?.id || userRole?.role_id || null;
+  const userRoleRole = getValue(userRole, 'role');
+  const role = getValue(user, 'role') || userRoleRole || roles?.[0] || null;
+  const roleId = getValue(role, 'id') || getValue(userRole, 'role_id') || null;
   setValue(user, 'role', role);
   setValue(user, 'role_id', roleId);
 

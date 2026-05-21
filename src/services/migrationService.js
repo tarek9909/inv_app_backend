@@ -3,6 +3,9 @@ const path = require('path');
 const { Sequelize } = require('sequelize');
 
 const MIGRATION_TABLE = 'sequelize_meta';
+const STARTUP_MIGRATION_SKIP = new Set([
+  '20260521000000-reset-schema-from-inventory-sql.js'
+]);
 
 const ensureMigrationTable = async (queryInterface) => {
   await queryInterface.createTable(MIGRATION_TABLE, {
@@ -28,6 +31,7 @@ const listMigrationFiles = () => {
   const migrationsDir = path.resolve(__dirname, '../migrations');
   return fs.readdirSync(migrationsDir)
     .filter((file) => file.endsWith('.js'))
+    .filter((file) => !STARTUP_MIGRATION_SKIP.has(file))
     .sort()
     .map((file) => ({ file, fullPath: path.join(migrationsDir, file) }));
 };

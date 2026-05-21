@@ -23,6 +23,25 @@ describe('new user-role and driver-link schema', () => {
     expect(user.driver_link).toEqual({ driver_id: 1, user_id: 7, driver });
   });
 
+  it('normalizes Sequelize-style nested user role instances', () => {
+    const { normalizeUserRole } = require('../src/services/userService');
+    const role = { id: 1, name: 'Admin', code: 'admin' };
+    const userRole = {
+      dataValues: { role_id: 1, role },
+      get(key) { return this.dataValues[key]; }
+    };
+    const user = {
+      dataValues: { id: 1, user_role: userRole },
+      get(key) { return this.dataValues[key]; },
+      setDataValue(key, value) { this.dataValues[key] = value; }
+    };
+
+    normalizeUserRole(user);
+
+    expect(user.dataValues.role).toBe(role);
+    expect(user.dataValues.role_id).toBe(1);
+  });
+
   it('creates users without users.role_id and writes the role into user_roles', async () => {
     jest.resetModules();
     const transaction = {};
