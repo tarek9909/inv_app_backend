@@ -391,9 +391,13 @@ const receiptStatusForRequest = (request) => {
   if (!request.driver_received_at) return 'receipt_pending';
   const items = request.items || [];
   if (!items.length) return 'receipt_submitted';
-  const confirmedCount = items.filter((l) => Boolean(l.confirmation?.confirmed)).length;
-  if (confirmedCount === items.length) return 'receipt_submitted';
-  if (confirmedCount === 0) return 'receipt_not_confirmed';
+  const receivedCount = items.filter((l) => Boolean(l.confirmation?.confirmed) && Number(l.confirmation?.confirmed_quantity || 0) > 0).length;
+  if (receivedCount === 0) return 'receipt_not_confirmed';
+  const fullyReceivedCount = items.filter((l) => (
+    Boolean(l.confirmation?.confirmed)
+    && Number(l.confirmation?.confirmed_quantity || 0) >= Number(l.quantity || 0)
+  )).length;
+  if (fullyReceivedCount === items.length) return 'receipt_submitted';
   return 'receipt_partial';
 };
 
@@ -418,7 +422,7 @@ const buildDriverReportRow = ({ driver, requests, payments, payrollRow, kpiRows,
   };
   if (!includeDetail) return report;
   return { ...report,
-    requests: requests.map((r) => ({ id: r.id, request_number: r.request_number, request_date: r.request_date, request_type: r.request_type, request_status: r.request_status, payment_status: r.payment_status, receipt_status: receiptStatusForRequest(r), total_amount: toNumber(r.total_amount), paid_amount: toNumber(r.paid_amount), remaining_amount: toNumber(r.remaining_amount), completed_at: r.completed_at, items: (r.items || []).map((l) => ({ id: l.id, item_name: l.item?.name || `Item #${l.item_id}`, quantity: toNumber(l.quantity), unit_price: toNumber(l.unit_price), confirmed: Boolean(l.confirmation?.confirmed) })) })),
+    requests: requests.map((r) => ({ id: r.id, request_number: r.request_number, request_date: r.request_date, request_type: r.request_type, request_status: r.request_status, payment_status: r.payment_status, receipt_status: receiptStatusForRequest(r), total_amount: toNumber(r.total_amount), paid_amount: toNumber(r.paid_amount), remaining_amount: toNumber(r.remaining_amount), completed_at: r.completed_at, items: (r.items || []).map((l) => ({ id: l.id, item_name: l.item?.name || `Item #${l.item_id}`, quantity: toNumber(l.quantity), unit_price: toNumber(l.unit_price), confirmed: Boolean(l.confirmation?.confirmed), confirmed_quantity: toNumber(l.confirmation?.confirmed_quantity) })) })),
     payments: payments.map((p) => ({ id: p.id, payment_number: p.payment_number, request_number: p.stock_request?.request_number || '', amount: toNumber(p.amount), payment_method: p.payment_method, payment_date: p.payment_date })),
     location_history: locationHistory.map((a) => ({ id: a.id, location: a.location || null, assigned_from: a.assigned_from, assigned_until: a.assigned_until }))
   };

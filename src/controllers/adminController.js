@@ -58,10 +58,11 @@ exports.resetUserPassword = asyncHandler(async (req, res) => {
   if (!user) throw new HttpError(404, 'User not found');
   const oldData = { id: user.id, must_change_password: user.must_change_password };
   const password = await bcrypt.hash(req.body.temporary_password, 10);
-  await user.update({ password, must_change_password: true });
+  const mustChangePassword = req.body.must_change_password !== false;
+  await user.update({ password, must_change_password: mustChangePassword });
   await recordLoginEvent({ user_id: user.id, email: user.email, event_type: 'admin_reset_password', ip_address: req.ip, user_agent: req.headers['user-agent'] });
-  await logAction({ req, action: 'reset_password', module: 'users', recordId: user.id, oldData, newData: { id: user.id, must_change_password: true } });
-  ok(res, 'Password reset; user must change it on next login');
+  await logAction({ req, action: 'reset_password', module: 'users', recordId: user.id, oldData, newData: { id: user.id, must_change_password: mustChangePassword } });
+  ok(res, mustChangePassword ? 'Password reset; user must change it on next login' : 'Password changed');
 });
 
 exports.listRoles = asyncHandler(async (req, res) => {

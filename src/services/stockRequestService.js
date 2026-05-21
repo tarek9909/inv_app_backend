@@ -27,9 +27,13 @@ const receiptStatusFor = (request) => {
     return 'receipt_partial';
   }
   if (!items.length) return 'receipt_submitted';
-  const confirmedCount = items.filter((line) => Boolean(line.confirmation?.confirmed)).length;
-  if (confirmedCount === items.length) return 'receipt_submitted';
-  if (confirmedCount === 0) return 'receipt_not_confirmed';
+  const receivedCount = items.filter((line) => Boolean(line.confirmation?.confirmed) && Number(line.confirmation?.confirmed_quantity || 0) > 0).length;
+  if (receivedCount === 0) return 'receipt_not_confirmed';
+  const fullyReceivedCount = items.filter((line) => (
+    Boolean(line.confirmation?.confirmed)
+    && Number(line.confirmation?.confirmed_quantity || 0) >= Number(line.quantity || 0)
+  )).length;
+  if (fullyReceivedCount === items.length) return 'receipt_submitted';
   return 'receipt_partial';
 };
 
@@ -83,7 +87,10 @@ const getFulfillmentMode = async (transaction) => {
 
 const hasFullyConfirmedReceipt = (request) => {
   const items = request.items || [];
-  return items.length > 0 && items.every((line) => Boolean(line.confirmation?.confirmed));
+  return items.length > 0 && items.every((line) => (
+    Boolean(line.confirmation?.confirmed)
+    && Number(line.confirmation?.confirmed_quantity || 0) >= Number(line.quantity || 0)
+  ));
 };
 
 const createStockRequest = async (payload, req) => sequelize.transaction(async (transaction) => {
@@ -295,11 +302,21 @@ const submitDriverReceipt = async (requestId, driver, payload, req) => sequelize
   for (const line of request.items || []) {
     const submitted = submittedByItemId.get(Number(line.id));
     const confirmed = Boolean(submitted.confirmed);
+    const requestedQuantity = Number(line.quantity || 0);
+    const confirmedQuantity = confirmed
+      ? Number(submitted.confirmed_quantity ?? requestedQuantity)
+      : 0;
+    if (confirmed && confirmedQuantity <= 0) {
+      throw new HttpError(400, 'Confirmed quantity must be greater than zero');
+    }
+    if (confirmedQuantity > requestedQuantity) {
+      throw new HttpError(400, 'Confirmed quantity cannot exceed requested quantity');
+    }
     const values = {
       stock_request_id: request.id,
       stock_request_item_id: line.id,
       confirmed,
-      confirmed_quantity: confirmed ? line.quantity : 0,
+      confirmed_quantity: confirmedQuantity,
       confirmed_at: now,
       updated_at: now
     };

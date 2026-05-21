@@ -266,7 +266,8 @@ const driverReceipt = Joi.object({
   notes: Joi.string().allow(null, ''),
   items: Joi.array().items(Joi.object({
     stock_request_item_id: id.required(),
-    confirmed: Joi.boolean().required()
+    confirmed: Joi.boolean().required(),
+    confirmed_quantity: Joi.number().precision(2).min(0)
   })).min(1).required()
 });
 
@@ -292,7 +293,8 @@ const attachmentList = Joi.object({
 });
 
 const adminPasswordReset = Joi.object({
-  temporary_password: Joi.string().min(6).required()
+  temporary_password: Joi.string().min(6).required(),
+  must_change_password: Joi.boolean().default(true)
 });
 
 module.exports = {

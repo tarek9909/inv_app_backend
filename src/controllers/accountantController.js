@@ -285,7 +285,7 @@ exports.updateMonthlyTargetStatus = asyncHandler(async (req, res) => {
 
 exports.listStockRequests = asyncHandler(async (req, res) => {
   const itemCountSql = '(SELECT COUNT(*) FROM stock_request_items sri WHERE sri.stock_request_id = stock_requests.id)';
-  const confirmedCountSql = '(SELECT COUNT(*) FROM stock_request_items sri JOIN stock_request_item_confirmations src ON src.stock_request_item_id = sri.id WHERE sri.stock_request_id = stock_requests.id AND src.confirmed = 1)';
+  const confirmedCountSql = '(SELECT COUNT(*) FROM stock_request_items sri JOIN stock_request_item_confirmations src ON src.stock_request_item_id = sri.id WHERE sri.stock_request_id = stock_requests.id AND src.confirmed = 1 AND src.confirmed_quantity >= sri.quantity)';
   const { rows, meta } = await list(StockRequest, req.query, {
     include: stockRequestService.includeStockRequestList,
     attributes: { include: [[literal(itemCountSql), 'item_count'], [literal(confirmedCountSql), 'confirmed_count']] },

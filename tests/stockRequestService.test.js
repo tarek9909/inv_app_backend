@@ -77,4 +77,48 @@ describe('stock request accounting fixes', () => {
       payment_status: 'paid'
     }), expect.any(Object));
   });
+
+  it('stores driver receipt quantities from submitted confirmations', async () => {
+    const request = {
+      id: 12,
+      request_status: 'approved',
+      driver_id: 4,
+      driver_invoice_viewed_at: new Date(),
+      items: [{ id: 101, quantity: 10 }],
+      toJSON: jest.fn(() => ({ id: 12, request_status: 'approved' })),
+      setDataValue: jest.fn(),
+      update: jest.fn().mockResolvedValue()
+    };
+    const { service, models } = loadService({ request });
+
+    await service.submitDriverReceipt(12, { id: 4 }, {
+      notes: 'two missing',
+      items: [{ stock_request_item_id: 101, confirmed: true, confirmed_quantity: 8 }]
+    }, { user: { id: 4 } });
+
+    expect(models.StockRequestItemConfirmation.create).toHaveBeenCalledWith(expect.objectContaining({
+      stock_request_id: 12,
+      stock_request_item_id: 101,
+      confirmed: true,
+      confirmed_quantity: 8
+    }), expect.any(Object));
+  });
+
+  it('rejects received quantities greater than requested quantities', async () => {
+    const request = {
+      id: 13,
+      request_status: 'approved',
+      driver_id: 4,
+      driver_invoice_viewed_at: new Date(),
+      items: [{ id: 102, quantity: 10 }],
+      toJSON: jest.fn(() => ({ id: 13, request_status: 'approved' })),
+      setDataValue: jest.fn(),
+      update: jest.fn().mockResolvedValue()
+    };
+    const { service } = loadService({ request });
+
+    await expect(service.submitDriverReceipt(13, { id: 4 }, {
+      items: [{ stock_request_item_id: 102, confirmed: true, confirmed_quantity: 11 }]
+    }, { user: { id: 4 } })).rejects.toThrow('Confirmed quantity cannot exceed requested quantity');
+  });
 });
